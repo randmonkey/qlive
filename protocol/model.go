@@ -1,6 +1,8 @@
 package protocol
 
-import "time"
+import (
+	"time"
+)
 
 /*
 	model.go: 规定数据存储的格式。
