@@ -1,25 +1,43 @@
 package main
 
 import (
+	"flag"
 	"os"
 	"os/signal"
 	"syscall"
 
+	qconfig "github.com/qiniu/x/config"
 	"github.com/qiniu/x/log"
+
 	"github.com/qrtc/qlive/config"
-	"github.com/qrtc/qlive/router"
 	"github.com/qrtc/qlive/service"
 )
 
-func main() {
-	r := router.NewRouter()
-	cfg := config.NewSample()
-	go r.Run(cfg.ListenAddr)
+var (
+	configFilePath = "qlive.conf"
+)
 
-	server := service.NewWSServer(cfg)
+func main() {
+	flag.StringVar(&configFilePath, "f", configFilePath, "configuration file to run qlive server")
+	flag.Parse()
+
+	conf := &config.Config{}
+	err := qconfig.LoadFile(conf, configFilePath)
+	if err != nil {
+		log.Fatalf("failed to load config file, error %v", err)
+	}
+
+	// 启动 gin HTTP server。
+	r, err := service.NewRouter(conf)
+	if err != nil {
+		log.Fatalf("failed to create gin HTTP server, error %v", err)
+	}
+	go r.Run(conf.ListenAddr)
+
+	server := service.NewWSServer(conf)
 	serv := service.NewService(&service.Config{
-		ListenAddr: cfg.WsConf.ListenAddr,
-		ServeURI:   cfg.WsConf.ServeURI,
+		ListenAddr: conf.WsConf.ListenAddr,
+		ServeURI:   conf.WsConf.ServeURI,
 	}, server)
 	serv.Start()
 
