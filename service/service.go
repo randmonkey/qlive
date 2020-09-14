@@ -34,8 +34,8 @@ type Conn struct {
 	cancel    chan struct{}
 	closeChan chan struct{}
 
-	authorized *atomic.Bool
-	authorizeD syncx.DoneChan
+	authorized    *atomic.Bool
+	authorizeDone syncx.DoneChan
 
 	remoteAddr string
 
@@ -57,7 +57,7 @@ func (c *Conn) monitor() {
 	to := time.Millisecond * time.Duration(c.s.conf.WsConf.AuthorizeTimeoutMS)
 	select {
 	case <-c.p.StopD():
-	case <-c.authorizeD:
+	case <-c.authorizeDone:
 	case <-time.After(to):
 		c.p.Stop()
 	}
@@ -237,25 +237,25 @@ type WSServer struct {
 func (s *WSServer) CreateClient(r *http.Request, rAddr, rPort string) (Client, error) {
 
 	return &Conn{
-		s:          s,
-		st:         time.Now(),
-		xl:         xlog.New(NewREQID()),
-		closeNow:   atomic.NewBool(false),
-		online:     atomic.NewBool(true),
-		cleared:    atomic.NewBool(false),
-		cancel:     make(chan struct{}, 1),
-		closeChan:  make(chan struct{}, 1),
-		authorized: atomic.NewBool(false),
-		authorizeD: syncx.NewDoneChan(),
-		remoteAddr: rAddr,
-		ppCancel:   make(chan struct{}, 1),
+		s:             s,
+		st:            time.Now(),
+		xl:            xlog.New(NewReqID()),
+		closeNow:      atomic.NewBool(false),
+		online:        atomic.NewBool(true),
+		cleared:       atomic.NewBool(false),
+		cancel:        make(chan struct{}, 1),
+		closeChan:     make(chan struct{}, 1),
+		authorized:    atomic.NewBool(false),
+		authorizeDone: syncx.NewDoneChan(),
+		remoteAddr:    rAddr,
+		ppCancel:      make(chan struct{}, 1),
 	}, nil
 }
 
 func NewWSServer(conf *config.Config) *WSServer {
 	return &WSServer{
 		conf:  *conf,
-		xl:    xlog.New(NewREQID()),
+		xl:    xlog.New(NewReqID()),
 		Conns: make(map[string]*Conn),
 	}
 }

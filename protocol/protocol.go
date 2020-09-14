@@ -69,13 +69,13 @@ func (p *Pong) Unmarshal(b []byte) error {
 }
 
 type Authorize struct {
-	RPCID       string `json:"rpcid,omitempty"`
-	Token       string `json:"token"`
-	ReconnToken int    `json:"reconntoken"`
-	MessageSN   int    `json:"msgsn"`
-	PlayerData  string `json:"playerdata"`
-	Agent       string `json:"agent"`
-	SdkVersion  string `json:"sdkversion"`
+	RPCID          string `json:"rpcID,omitempty"`
+	Token          string `json:"token"`
+	ReconnectToken int    `json:"reconnectToken"`
+	MessageSN      int    `json:"messageSN"`
+	PlayerData     string `json:"playerData"`
+	Agent          string `json:"agent"`
+	SDKVersion     string `json:"sdkVersion"`
 }
 
 func (p *Authorize) Marshal() ([]byte, error) {
@@ -87,10 +87,10 @@ func (p *Authorize) Unmarshal(b []byte) error {
 }
 
 type AuthorizeResponse struct {
-	RPCID       string `json:"rpcid,omitempty"`
-	Code        int    `json:"code"`
-	Error       string `json:"error"`
-	ReconnToken int    `json:"reconntoken"`
+	RPCID          string `json:"rpcID,omitempty"`
+	Code           int    `json:"code"`
+	Error          string `json:"error"`
+	ReconnectToken int    `json:"reconnectToken"`
 }
 
 func (p *AuthorizeResponse) Marshal() ([]byte, error) {
@@ -104,7 +104,7 @@ func (p *AuthorizeResponse) Unmarshal(b []byte) error {
 type Disconnect struct {
 	Code     int    `json:"code"`
 	Error    string `json:"error"`
-	KickedID string `json:"kickedid"`
+	KickedID string `json:"kickedID"`
 }
 
 func (p *Disconnect) Marshal() ([]byte, error) {

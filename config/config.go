@@ -26,7 +26,7 @@ func NewSample() *Config {
 	return &Config{
 		ListenAddr: ":8080",
 		WsConf: &WebSocketConf{
-			ListenAddr: ":6443",
+			ListenAddr: ":8443",
 			ServeURI:   "/qlive",
 		},
 	}

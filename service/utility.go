@@ -10,7 +10,7 @@ import (
 
 var pid = uint32(time.Now().UnixNano() % 4294967291)
 
-func NewREQID() string {
+func NewReqID() string {
 	var b [12]byte
 	binary.LittleEndian.PutUint32(b[:], pid)
 	binary.LittleEndian.PutUint64(b[4:], uint64(time.Now().UnixNano()))

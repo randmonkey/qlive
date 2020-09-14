@@ -1,5 +1,3 @@
-// Copyright 2017 QINIU. All rights reserved.
-
 package service
 
 import (
