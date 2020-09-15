@@ -87,8 +87,8 @@ func (c *RoomController) GetRoomByID(xl *xlog.Logger, id string) (*protocol.Live
 	return c.GetRoomByFields(xl, map[string]interface{}{"_id": id})
 }
 
-// GetAllRoomList 获取所有直播房间列表
-func (c *RoomController) GetAllRoomList(xl *xlog.Logger) ([]protocol.LiveRoom, error) {
+// ListAllRooms 获取所有直播房间列表
+func (c *RoomController) ListAllRooms(xl *xlog.Logger) ([]protocol.LiveRoom, error) {
 	if xl == nil {
 		xl = c.xl
 	}
@@ -97,8 +97,8 @@ func (c *RoomController) GetAllRoomList(xl *xlog.Logger) ([]protocol.LiveRoom, e
 	return rooms, err
 }
 
-// GetPKRoomList 获取可PK直播房间列表
-func (c *RoomController) GetPKRoomList(xl *xlog.Logger) ([]protocol.LiveRoom, error) {
+// ListPKRooms 获取可PK直播房间列表
+func (c *RoomController) ListPKRooms(xl *xlog.Logger) ([]protocol.LiveRoom, error) {
 	if xl == nil {
 		xl = c.xl
 	}
