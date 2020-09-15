@@ -69,6 +69,7 @@ type SMSCodeRecord struct {
 	PhoneNumber string    `json:"phoneNumber" bson:"phoneNumber"`
 	SMSCode     string    `json:"smsCode" bson:"smsCode"`
 	SendTime    time.Time `json:"sendTime" bson:"sendTime"`
+	ExpireAt    time.Time `json:"-" bson:"expireAt"`
 }
 
 // LiveRoomStatus 直播间状态。
@@ -80,7 +81,7 @@ const (
 	// LiveRoomStatusPK PK连麦直播中。
 	LiveRoomStatusPK LiveRoomStatus = "PK"
 	// LiveRoomStatusWaitPK 直播间有PK请求，等待响应中
-	LiveRoomStatusWaitPK = "waitPK"
+	LiveRoomStatusWaitPK LiveRoomStatus = "waitPK"
 )
 
 // LiveRoom 直播间信息。

@@ -1,4 +1,3 @@
-
 all: dep
 	GODEBUG=netdns=go go install -v ./...
 

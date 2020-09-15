@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/qiniu/x/xlog"
 	"github.com/qrtc/qlive/protocol"
 )
 
@@ -12,7 +13,7 @@ type MockAccount struct {
 	accounts []*protocol.Account
 }
 
-func (m *MockAccount) GetAccountByPhoneNumber(phoneNumber string) (*protocol.Account, error) {
+func (m *MockAccount) GetAccountByPhoneNumber(xl *xlog.Logger, phoneNumber string) (*protocol.Account, error) {
 	for _, account := range m.accounts {
 		if account.PhoneNumber == phoneNumber {
 			return account, nil
@@ -21,7 +22,7 @@ func (m *MockAccount) GetAccountByPhoneNumber(phoneNumber string) (*protocol.Acc
 	return nil, fmt.Errorf("not found")
 }
 
-func (m *MockAccount) GetAccountByID(id string) (*protocol.Account, error) {
+func (m *MockAccount) GetAccountByID(xl *xlog.Logger, id string) (*protocol.Account, error) {
 	for _, account := range m.accounts {
 		if account.ID == id {
 			return account, nil
@@ -30,7 +31,7 @@ func (m *MockAccount) GetAccountByID(id string) (*protocol.Account, error) {
 	return nil, fmt.Errorf("not found")
 }
 
-func (m *MockAccount) CreateAccount(account *protocol.Account) error {
+func (m *MockAccount) CreateAccount(xl *xlog.Logger, account *protocol.Account) error {
 	if account.ID == "" || account.PhoneNumber == "" {
 		return fmt.Errorf("bad request")
 	}
@@ -43,7 +44,7 @@ func (m *MockAccount) CreateAccount(account *protocol.Account) error {
 	return nil
 }
 
-func (m *MockAccount) UpdateAccount(id string, account *protocol.Account) (*protocol.Account, error) {
+func (m *MockAccount) UpdateAccount(xl *xlog.Logger, id string, account *protocol.Account) (*protocol.Account, error) {
 	if account.ID != "" && account.ID != id {
 		return nil, fmt.Errorf("bad request")
 	}
@@ -65,16 +66,26 @@ func (m *MockAccount) UpdateAccount(id string, account *protocol.Account) (*prot
 	return oldAccount, nil
 }
 
+// AccountLogin 模拟账号登录，返回token。
+func (m *MockAccount) AccountLogin(xl *xlog.Logger, id string) (token string, err error) {
+	return id + "#" + "login-token", nil
+}
+
+// AccountLogout 模拟账号退出登录。
+func (m *MockAccount) AccountLogout(xl *xlog.Logger, id string) error {
+	return nil
+}
+
 // MockSMSCode 模拟的短信服务。
 type MockSMSCode struct{}
 
 // Send 模拟发送验证码
-func (m *MockSMSCode) Send(phoneNumber string) error {
+func (m *MockSMSCode) Send(xl *xlog.Logger, phoneNumber string) error {
 	return nil
 }
 
 // Validate 模拟检查输入的验证码。
-func (m *MockSMSCode) Validate(phoneNumber string, smsCode string) error {
+func (m *MockSMSCode) Validate(xl *xlog.Logger, phoneNumber string, smsCode string) error {
 	if smsCode == "123456" {
 		return nil
 	}
@@ -85,7 +96,7 @@ func (m *MockSMSCode) Validate(phoneNumber string, smsCode string) error {
 type MockAuth struct{}
 
 // GetIDByToken 从token 中获取用户ID。
-func (m *MockAuth) GetIDByToken(token string) (string, error) {
+func (m *MockAuth) GetIDByToken(xl *xlog.Logger, token string) (string, error) {
 	parts := strings.SplitN(token, "#", 2)
 	if len(parts) < 2 {
 		return "", fmt.Errorf("invalid token")
