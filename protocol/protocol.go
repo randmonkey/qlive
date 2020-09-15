@@ -11,6 +11,12 @@ const (
 	RequestIDHeader = "X-Reqid"
 	// XLogKey gin context中，用于获取记录请求相关日志的 xlog logger的key。
 	XLogKey = "xlog-logger"
+
+	// LoginTokenKey 登录用的token。
+	LoginTokenKey = "qlive-login-token"
+
+	// UserIDContextKey 存放在请求context 中的用户ID。
+	UserIDContextKey = "userID"
 )
 
 // UserInfo 用户的信息，包括ID、昵称等。
@@ -27,13 +33,10 @@ type SMSLoginArgs struct {
 }
 
 // LoginResponse 登录的返回结果。
-type LoginResponse UserInfo
-
-// LoginCookieKey 登录用的token，存放在cookie中。
-const LoginCookieKey = "qlive-login-token"
-
-// UserIDContextKey 存放在请求context 中的用户ID。
-const UserIDContextKey = "userID"
+type LoginResponse struct {
+	UserInfo
+	Token string `json:"token"`
+}
 
 // UpdateProfileArgs 修改用户信息接口。
 type UpdateProfileArgs struct {

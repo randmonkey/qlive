@@ -77,10 +77,16 @@ func (m *MockAccount) AccountLogout(xl *xlog.Logger, id string) error {
 }
 
 // MockSMSCode 模拟的短信服务。
-type MockSMSCode struct{}
+type MockSMSCode struct {
+	// 模拟发送出错的情况。
+	NumberToError map[string]error
+}
 
 // Send 模拟发送验证码
 func (m *MockSMSCode) Send(xl *xlog.Logger, phoneNumber string) error {
+	if m.NumberToError != nil {
+		return m.NumberToError[phoneNumber]
+	}
 	return nil
 }
 

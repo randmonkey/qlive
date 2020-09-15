@@ -10,7 +10,6 @@ import (
 
 	"github.com/qiniu/qmgo"
 	"github.com/qiniu/x/xlog"
-	"github.com/qrtc/qlive/errors"
 	"github.com/qrtc/qlive/protocol"
 )
 
@@ -147,22 +146,23 @@ func (c *AccountController) AccountLogin(xl *xlog.Logger, userID string) (token 
 	activeUserRecord := &protocol.ActiveUser{}
 	err = c.activeUserColl.Find(context.Background(), map[string]interface{}{"_id": userID}).
 		One(activeUserRecord)
-	if err == nil {
-		c.xl.Infof("user %s has been already logged in", userID)
-		return "", &errors.ServerError{Code: errors.ServerErrorUserLoggedin}
-	}
-	if !qmgo.IsErrNoDocuments(err) {
-		c.xl.Errorf("failed to check logged in users in mongo,error %v", err)
-		return "", err
+	if err != nil {
+		if !qmgo.IsErrNoDocuments(err) {
+			c.xl.Errorf("failed to check logged in users in mongo,error %v", err)
+			return "", err
+		}
+	} else {
+		c.xl.Infof("user %s has been already logged in, the old session will be invalid", userID)
 	}
 	activeUserRecord.ID = userID
 	activeUserRecord.Nickname = account.Nickname
 	activeUserRecord.Status = protocol.UserStatusIdle
 	token = c.makeLoginToken(xl, account)
 	activeUserRecord.Token = token
-	_, err = c.activeUserColl.InsertOne(context.Background(), activeUserRecord)
+	// update or insert login record.
+	_, err = c.activeUserColl.Upsert(context.Background(), bson.M{"_id": userID}, activeUserRecord)
 	if err != nil {
-		xl.Errorf("failed to insert user login info, error %v", err)
+		xl.Errorf("failed to update or insert user login record, error %v", err)
 		return "", err
 	}
 	return token, nil

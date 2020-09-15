@@ -115,7 +115,7 @@ func (h *AccountHandler) LoginBySMS(c *gin.Context) {
 	args := protocol.SMSLoginArgs{}
 	err := c.BindJSON(&args)
 	if err != nil {
-		xl.Infof("invalid args in body")
+		xl.Infof("invalid args in body, error %v", err)
 		httpError := errors.NewHTTPErrorBadRequest().WithRequestID(requestID).WithMessage("invalid args in request body")
 		c.JSON(http.StatusBadRequest, httpError)
 		return
@@ -168,10 +168,14 @@ func (h *AccountHandler) LoginBySMS(c *gin.Context) {
 	}
 
 	res := &protocol.LoginResponse{
-		ID:       account.ID,
-		Nickname: account.Nickname,
+		UserInfo: protocol.UserInfo{
+			ID:       account.ID,
+			Nickname: account.Nickname,
+			Gender:   account.Gender,
+		},
+		Token: token,
 	}
-	c.SetCookie(protocol.LoginCookieKey, token, 0, "/", "qlive.qiniu.com", true, false)
+	c.SetCookie(protocol.LoginTokenKey, token, 0, "/", "qlive.qiniu.com", true, false)
 	c.JSON(http.StatusOK, res)
 }
 
@@ -184,7 +188,7 @@ func (h *AccountHandler) UpdateProfile(c *gin.Context) {
 	args := protocol.UpdateProfileArgs{}
 	bindErr := c.BindJSON(&args)
 	if bindErr != nil {
-		xl.Infof("invalid args in request body")
+		xl.Infof("invalid args in request body, error %v", bindErr)
 		httpErr := errors.NewHTTPErrorBadRequest().WithRequestID(requestID).WithMessage("invalid args in request body")
 		c.JSON(http.StatusBadRequest, httpErr)
 		return
@@ -229,9 +233,12 @@ func (h *AccountHandler) UpdateProfile(c *gin.Context) {
 // Logout 退出登录。
 func (h *AccountHandler) Logout(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
+	requestID := xl.ReqId
 	id, exist := c.Get(protocol.UserIDContextKey)
 	if !exist {
 		xl.Infof("cannot find ID in context")
+		httpErr := errors.NewHTTPErrorNotLoggedIn().WithRequestID(requestID)
+		c.JSON(http.StatusUnauthorized, httpErr)
 	}
 	err := h.Account.AccountLogout(xl, id.(string))
 	if err != nil {
@@ -239,6 +246,6 @@ func (h *AccountHandler) Logout(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, "")
 	}
 	xl.Infof("user %s logged out", id)
-	c.SetCookie(protocol.LoginCookieKey, "", -1, "/", "qlive.qiniu.com", true, false)
+	c.SetCookie(protocol.LoginTokenKey, "", -1, "/", "qlive.qiniu.com", true, false)
 	c.JSON(http.StatusOK, "")
 }
