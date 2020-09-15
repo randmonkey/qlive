@@ -15,9 +15,6 @@ import (
 	"github.com/qrtc/qlive/protocol"
 )
 
-// SMSCodeCollection 存储已发送的短信验证码的表。
-const SMSCodeCollection = "sms_code"
-
 // SMSCodeParamKey 验证码的模板变量名称。
 const SMSCodeParamKey = "code"
 

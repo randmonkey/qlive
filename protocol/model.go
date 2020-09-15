@@ -21,7 +21,7 @@ type Account struct {
 	// 用户显示性别。
 	Gender string `json:"gender" bson:"gender"`
 	// AvartarURL 头像URL地址，暂时留空（SDK提供头像）
-	AvartarURL string `json:"avartarURL,omitempty" bson:"avartarURL,omitempty"`
+	AvatarURL string `json:"avatarURL,omitempty" bson:"avatarURL,omitempty"`
 	// RegisterIP 用户注册（首次登录）时使用的IP。
 	RegisterIP string `json:"registerIP" bson:"registerIP"`
 	// RegisterTime 用户注册（首次登录）时间。

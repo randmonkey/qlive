@@ -13,13 +13,6 @@ import (
 	"github.com/qrtc/qlive/protocol"
 )
 
-const (
-	// AccountCollection 存储账号信息的表。
-	AccountCollection = "accounts"
-	// ActiveUserCollection 存储已登录用户的表。
-	ActiveUserCollection = "active_users"
-)
-
 // AccountController 用户注册、更新信息、登录、退出登录等操作。
 type AccountController struct {
 	mongoClient    *qmgo.Client
@@ -77,7 +70,7 @@ func (c *AccountController) GetAccountByFields(xl *xlog.Logger, fields map[strin
 			xl.Infof("no such user for fields %v", fields)
 			return nil, fmt.Errorf("not found")
 		}
-		xl.Errorf("failed to get user,error %v", fields)
+		xl.Errorf("failed to get user, error %v", fields)
 		return nil, err
 	}
 	return &account, nil
