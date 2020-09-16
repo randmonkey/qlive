@@ -9,7 +9,6 @@ import (
 	"github.com/qiniu/x/xlog"
 
 	"github.com/qrtc/qlive/errors"
-	"github.com/qrtc/qlive/handler"
 	"github.com/qrtc/qlive/protocol"
 )
 
@@ -25,11 +24,10 @@ type RoomController struct {
 	// roomNumberLimit 最大的直播间数量。当直播间数量大于等于该数字时无法创建新的直播间，服务端返回503.
 	roomNumberLimit int
 	xl              *xlog.Logger
-	accountHandler  handler.AccountHandler
 }
 
 // NewRoomController 创建 room controller.
-func NewRoomController(mongoURI string, database string, account *handler.AccountHandler, xl *xlog.Logger) (*RoomController, error) {
+func NewRoomController(mongoURI string, database string, xl *xlog.Logger) (*RoomController, error) {
 	if xl == nil {
 		xl = xlog.New("qlive-room-controller")
 	}
@@ -47,7 +45,6 @@ func NewRoomController(mongoURI string, database string, account *handler.Accoun
 		roomColl:        roomColl,
 		roomNumberLimit: DefaultRoomNumberLimit,
 		xl:              xl,
-		accountHandler:  *account,
 	}, nil
 }
 
@@ -227,16 +224,4 @@ func (c *RoomController) LeaveRoom(xl *xlog.Logger, userID string, roomID string
 	}
 
 	return nil
-}
-
-// ListRooms 获取直播间列表
-func (c *RoomController) ListRooms(xl *xlog.Logger, onlyListPkRooms string, userID string) ([]protocol.LiveRoom, error) {
-	var roomLists []protocol.LiveRoom
-	var err error
-	if onlyListPkRooms == "true" {
-		roomLists, err = c.ListPKRooms(xl, userID)
-	} else {
-		roomLists, err = c.ListAllRooms(xl)
-	}
-	return roomLists, err
 }

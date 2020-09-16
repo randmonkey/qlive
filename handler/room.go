@@ -32,8 +32,6 @@ type RoomInterface interface {
 	EnterRoom(xl *xlog.Logger, userID string, roomID string) (*protocol.LiveRoom, error)
 	// LeaveRoom 退出直播间。
 	LeaveRoom(xl *xlog.Logger, userID string, roomID string) error
-	// ListRoom 获取直播间列表。
-	ListRooms(xl *xlog.Logger, onlyListPkRooms string, userID string) ([]protocol.LiveRoom, error)
 }
 
 // ListRooms 列出房间请求。
@@ -238,18 +236,18 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 	updatedRoom, err := h.Room.EnterRoom(xl, args.UserID, args.RoomID)
 	if err != nil {
 		xl.Errorf("enter room failed, enter room request: %v, error: %v", args, err)
-		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
-		c.JSON(http.StatusInternalServerError, httpErr)
+		httpErr := errors.NewHTTPErrorNoSuchRoom().WithRequestID(requestID)
+		c.JSON(http.StatusBadRequest, httpErr)
 		return
 	}
 
 	ret := &protocol.EnterRoomResponse{}
 	// 获取creator的userInfo
-	creator, err := h.Account.GetAccountByID(xl, updatedRoom.ID)
+	creator, err := h.Account.GetAccountByID(xl, updatedRoom.Creator)
 	if err != nil {
 		xl.Errorf("creator %v is not found", creator)
 		httpErr := errors.NewHTTPErrorNoSuchUser().WithRequestID(requestID)
-		c.JSON(http.StatusInternalServerError, httpErr)
+		c.JSON(http.StatusBadRequest, httpErr)
 		return
 	}
 	creatorInfo := protocol.UserInfo{

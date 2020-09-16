@@ -40,11 +40,12 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		Auth: authController,
 	}
 
-	roomController, err := controller.NewRoomController(conf.Mongo.URI, conf.Mongo.Database, accountHandler, nil)
+	roomController, err := controller.NewRoomController(conf.Mongo.URI, conf.Mongo.Database, nil)
 	if err != nil {
 		return nil, err
 	}
 	roomHandler := &handler.RoomHandler{
+		Account:  accountController,
 		Room:     roomController,
 		LiveHost: conf.RTC.PublishHost,
 		LiveHub:  conf.RTC.PublishHub,
