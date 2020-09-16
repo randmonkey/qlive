@@ -38,12 +38,13 @@ func main() {
 	}
 	go r.Run(conf.ListenAddr)
 
-	server := service.NewWSServer(conf)
-	serv := service.NewService(&service.Config{
-		ListenAddr: conf.WsConf.ListenAddr,
-		ServeURI:   conf.WsConf.ServeURI,
-	}, server)
-	serv.Start()
+	// 启动 WebSocket server。
+	ws, err := service.NewWSServer(conf)
+	if err != nil {
+		log.Fatalf("failed to create Websocket server, error %v", err)
+	}
+	ws.Start()
+	log.Infof("WebSocket listening and serving on %s%s", conf.WsConf.ListenAddr, conf.WsConf.ServeURI)
 
 	qC := make(chan os.Signal, 1)
 	signal.Notify(qC, syscall.SIGINT, syscall.SIGTERM)
@@ -51,5 +52,9 @@ func main() {
 	select {
 	case s := <-qC:
 		log.Info(s.String())
+	case <-ws.StopD():
+		log.Error("WebSocket service stoped: ", ws.Error())
 	}
+
+	ws.WaitClients()
 }

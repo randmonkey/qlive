@@ -14,14 +14,17 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/qrtc/qlive/config"
+	"github.com/qrtc/qlive/controller"
+	"github.com/qrtc/qlive/errors"
 	"github.com/qrtc/qlive/protocol"
+	"github.com/qrtc/qlive/service/websocket"
 )
 
 type PMessage interface {
 	Marshal() ([]byte, error)
 }
 
-type Conn struct {
+type WSClient struct {
 	s  *WSServer
 	p  *msgpump.Pump
 	st time.Time
@@ -44,16 +47,15 @@ type Conn struct {
 	ppCancel chan struct{}
 }
 
-func (c *Conn) Start(p *msgpump.Pump) {
+func (c *WSClient) Start(p *msgpump.Pump) {
 	c.p = p
 	c.p.Start(c.s.QuitCtx())
 	go c.monitor()
 }
 
-func (c *Conn) monitor() {
+func (c *WSClient) monitor() {
 	c.xl.Infof("monitor start")
 	defer c.ending()
-
 	to := time.Millisecond * time.Duration(c.s.conf.WsConf.AuthorizeTimeoutMS)
 	select {
 	case <-c.p.StopD():
@@ -69,7 +71,7 @@ func (c *Conn) monitor() {
 	c.xl.Infof("monitor end: %v, closeNow: %v, cleared: %v, authorized: %v", c.playerID, c.closeNow.Load(), c.cleared.Load(), c.authorized.Load())
 }
 
-func (c *Conn) ending() {
+func (c *WSClient) ending() {
 	c.recover()
 
 	c.online.Store(false)
@@ -111,7 +113,7 @@ func (c *Conn) ending() {
 	//Do some disconnect logic
 }
 
-func (c *Conn) pingPong() {
+func (c *WSClient) pingPong() {
 	ping := &protocol.Ping{}
 
 	for {
@@ -132,20 +134,20 @@ func (c *Conn) pingPong() {
 }
 
 // Online get client online status.
-func (c *Conn) Online() bool {
+func (c *WSClient) Online() bool {
 	return c.online.Load()
 }
 
 // Cancel cancel ending function.
-func (c *Conn) Cancel() {
+func (c *WSClient) Cancel() {
 	select {
 	case c.cancel <- struct{}{}:
 	default:
 	}
 }
 
-// Close stop client msgpump.
-func (c *Conn) Close() error {
+// close stop client msgpump.
+func (c *WSClient) close() error {
 	c.closeNow.Store(true)
 	if c.p != nil {
 		c.p.Stop()
@@ -155,12 +157,12 @@ func (c *Conn) Close() error {
 }
 
 // StartTime get client start time.
-func (c *Conn) StartTime() time.Time {
+func (c *WSClient) StartTime() time.Time {
 	return c.st
 }
 
-// Notify write a notify to client.
-func (c *Conn) Notify(t string, v PMessage) {
+// notify write a notify to client.
+func (c *WSClient) Notify(t string, v PMessage) {
 	if t == protocol.MT_Disconnect {
 		c.cleared.Store(true)
 	}
@@ -177,19 +179,19 @@ func (c *Conn) Notify(t string, v PMessage) {
 
 		if ok := c.p.TryOutput(t, m); !ok {
 			c.xl.Errorf("TryOutput failed %v", c.playerID)
-			c.Close()
+			c.close()
 		}
 	}
 }
 
 // Process listen all requests.
-func (c *Conn) Process(ctx context.Context, t string, m msgpump.Message) {
+func (c *WSClient) Process(ctx context.Context, t string, m msgpump.Message) {
 	go func(ctx context.Context, t string, m msgpump.Message) {
 		c.parallelProcess(ctx, t, m)
 	}(ctx, t, m)
 }
 
-func (c *Conn) parallelProcess(ctx context.Context, t string, m msgpump.Message) {
+func (c *WSClient) parallelProcess(ctx context.Context, t string, m msgpump.Message) {
 	defer c.recover()
 
 	if t != protocol.MT_Ping && t != protocol.MT_Pong {
@@ -207,14 +209,15 @@ func (c *Conn) parallelProcess(ctx context.Context, t string, m msgpump.Message)
 		c.Notify(protocol.MT_Pong, &protocol.Pong{})
 	case protocol.MT_Pong:
 	case protocol.MT_Authorize:
+		c.onAuthorize(ctx, m)
 	case protocol.MT_Disconnect:
-		c.Close()
+		c.close()
 	default:
 		c.xl.Errorf("unknown message from %v, %v=%v", c.playerID, t, string(m))
 	}
 }
 
-func (c *Conn) recover() {
+func (c *WSClient) recover() {
 	if e := recover(); e != nil {
 		const size = 16 << 10
 		buf := make([]byte, size)
@@ -223,20 +226,54 @@ func (c *Conn) recover() {
 	}
 }
 
+func (c *WSClient) onAuthorize(ctx context.Context, m msgpump.Message) {
+	var req protocol.Authorize
+	err := req.Unmarshal(m)
+	if err != nil {
+		return
+	}
+
+	_, err = c.s.authCtl.GetIDByToken(c.xl, req.Token)
+	if err != nil {
+		res := &protocol.AuthorizeResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorTokenInvalid,
+			Error: errors.WSErrorToString[errors.WSErrorTokenInvalid],
+		}
+		c.Notify(protocol.MT_AuthorizeResponse, res)
+		return
+	}
+
+	c.authorized.Store(true)
+	c.authorizeDone.SetDone()
+	res := &protocol.AuthorizeResponse{
+		RPCID: req.RPCID,
+		Code:  errors.WSErrorOK,
+		Error: errors.WSErrorToString[errors.WSErrorOK],
+	}
+	c.Notify(protocol.MT_AuthorizeResponse, res)
+	go c.pingPong()
+	return
+}
+
 // WebSocket Server
 type WSServer struct {
 	conf config.Config
 	xl   *xlog.Logger
 
 	cl    sync.RWMutex
-	Conns map[string]*Conn
+	Conns map[string]*WSClient
 
-	*Service
+	accountCtl *controller.AccountController
+	authCtl    *controller.AuthController
+	roomCtl    *controller.RoomController
+
+	*websocket.Service
 }
 
-func (s *WSServer) CreateClient(r *http.Request, rAddr, rPort string) (Client, error) {
+func (s *WSServer) CreateClient(r *http.Request, rAddr, rPort string) (websocket.Client, error) {
 
-	return &Conn{
+	return &WSClient{
 		s:             s,
 		st:            time.Now(),
 		xl:            xlog.New(NewReqID()),
@@ -252,10 +289,30 @@ func (s *WSServer) CreateClient(r *http.Request, rAddr, rPort string) (Client, e
 	}, nil
 }
 
-func NewWSServer(conf *config.Config) *WSServer {
-	return &WSServer{
+func NewWSServer(conf *config.Config) (s *WSServer, err error) {
+	s = &WSServer{
 		conf:  *conf,
 		xl:    xlog.New(NewReqID()),
-		Conns: make(map[string]*Conn),
+		Conns: make(map[string]*WSClient),
 	}
+
+	s.accountCtl, err = controller.NewAccountController(conf.Mongo.URI, conf.Mongo.Database, nil)
+	if err != nil {
+		return nil, err
+	}
+	s.authCtl, err = controller.NewAuthController(conf.Mongo.URI, conf.Mongo.Database, nil)
+	if err != nil {
+		return nil, err
+	}
+	s.roomCtl, err = controller.NewRoomController(conf.Mongo.URI, conf.Mongo.Database, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	s.Service = websocket.NewService(&websocket.Config{
+		ListenAddr: conf.WsConf.ListenAddr,
+		ServeURI:   conf.WsConf.ServeURI,
+	}, s)
+
+	return s, err
 }
