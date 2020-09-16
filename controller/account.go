@@ -107,11 +107,11 @@ func (c *AccountController) UpdateAccount(xl *xlog.Logger, id string, newAccount
 		return nil, err
 	}
 	// 同步更新已登录用户信息。
-	activeUserInfo := &protocol.ActiveUser{}
-	err = c.activeUserColl.Find(context.Background(), bson.M{"_id": id}).One(&activeUserInfo)
+	activeUser := &protocol.ActiveUser{}
+	err = c.activeUserColl.Find(context.Background(), bson.M{"_id": id}).One(&activeUser)
 	if err == nil {
-		activeUserInfo.Nickname = newAccount.Nickname
-		updateErr := c.activeUserColl.UpdateOne(context.Background(), bson.M{"_id": id}, bson.M{"$set": activeUserInfo})
+		activeUser.Nickname = newAccount.Nickname
+		updateErr := c.activeUserColl.UpdateOne(context.Background(), bson.M{"_id": id}, bson.M{"$set": activeUser})
 		if updateErr != nil {
 			xl.Errorf("failed to update active user info, error %v", err)
 		}
