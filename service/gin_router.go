@@ -45,6 +45,7 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		return nil, err
 	}
 	roomHandler := &handler.RoomHandler{
+		Account:  accountController,
 		Room:     roomController,
 		LiveHost: conf.RTC.PublishHost,
 		LiveHub:  conf.RTC.PublishHub,
@@ -62,6 +63,12 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		v1.POST("rooms", addRequestID, authHandler.Authenticate, roomHandler.CreateRoom)
 		v1.POST("close_room", addRequestID, authHandler.Authenticate, roomHandler.CloseRoom)
 
+		// 观众端API：进入、退出房间。
+		v1.POST("enter_room", addRequestID, authHandler.Authenticate, roomHandler.EnterRoom)
+		v1.POST("leave_room", addRequestID, authHandler.Authenticate, roomHandler.LeaveRoom)
+
+		// 观众端/主播端API：获取全部房间或者PK房间。
+		v1.GET("rooms", addRequestID, authHandler.Authenticate, roomHandler.ListRooms)
 	}
 	router.NoRoute(addRequestID, returnNotFound)
 	return router, nil

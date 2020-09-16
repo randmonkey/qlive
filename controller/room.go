@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-
 	"go.mongodb.org/mongo-driver/bson"
 
 	"github.com/qiniu/qmgo"
@@ -179,4 +178,50 @@ func (c *RoomController) UpdateRoom(xl *xlog.Logger, id string, newRoom *protoco
 		return nil, err
 	}
 	return room, nil
+}
+
+// EnterRoom 进入直播房间。
+func (c *RoomController) EnterRoom(xl *xlog.Logger, userID string, roomID string) (*protocol.LiveRoom, error) {
+	if xl == nil {
+		xl = c.xl
+	}
+	room, err := c.GetRoomByID(xl, roomID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 用户进入房间
+	room.Audiences = append(room.Audiences, userID)
+	updatedRoom, err := c.UpdateRoom(xl, room.ID, room)
+	if err != nil {
+		xl.Infof("error when updating room %v", err)
+		return nil, err
+	}
+
+	return updatedRoom, nil
+}
+
+// LeaveRoom 退出直播房间。
+func (c *RoomController) LeaveRoom(xl *xlog.Logger, userID string, roomID string) error {
+	if xl == nil {
+		xl = c.xl
+	}
+	room, err := c.GetRoomByID(xl, roomID)
+	if err != nil {
+		return err
+	}
+
+	//TODO 用户退出房间，不在房间是否需要err？
+	for index, audience := range room.Audiences {
+		if audience == userID {
+			room.Audiences = append(room.Audiences[:index], room.Audiences[index+1:]...)
+		}
+	}
+	_, err = c.UpdateRoom(xl, room.ID, room)
+	if err != nil {
+		xl.Infof("error when updating room %v", err)
+		return err
+	}
+
+	return nil
 }
