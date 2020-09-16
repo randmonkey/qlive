@@ -1,10 +1,11 @@
-package service
+package websocket
 
 import (
 	"context"
 	"errors"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -137,7 +138,7 @@ func (s *Service) websocketHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var rAddr, rPort string
-	rAddr = GetRemoteAddr(r)
+	rAddr = getRemoteAddr(r)
 	if host, port, err := net.SplitHostPort(rAddr); err == nil {
 		rAddr = host
 		rPort = port
@@ -165,4 +166,22 @@ type connwrapper struct {
 func (c connwrapper) Close() error {
 	c.s.cliWG.Done()
 	return c.Conn.Close()
+}
+
+func getRemoteAddr(r *http.Request) string {
+
+	if addr := r.Header.Get("X-Forwarded-For"); addr != "" {
+		if idx := strings.Index(addr, ","); idx != -1 {
+			addr = addr[:idx]
+		}
+		return addr
+	}
+
+	if addr := r.Header.Get("X-Real-IP"); addr != "" {
+		if port := r.Header.Get("X-Real-PORT"); port != "" {
+			addr += ":" + port
+		}
+		return addr
+	}
+	return r.RemoteAddr
 }

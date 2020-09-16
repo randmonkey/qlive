@@ -70,7 +70,7 @@ func NewSample() *Config {
 		DebugLevel: 0,
 		ListenAddr: ":8080",
 		WsConf: &WebSocketConf{
-			ListenAddr: ":8443",
+			ListenAddr: ":8082",
 			ServeURI:   "/qlive",
 		},
 		Mongo: &MongoConfig{
