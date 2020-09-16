@@ -4,17 +4,27 @@ import (
 	"context"
 	"fmt"
 
+	"go.mongodb.org/mongo-driver/bson"
+
 	"github.com/qiniu/qmgo"
 	"github.com/qiniu/x/xlog"
+
+	"github.com/qrtc/qlive/errors"
 	"github.com/qrtc/qlive/protocol"
-	"go.mongodb.org/mongo-driver/bson"
+)
+
+const (
+	// DefaultRoomNumberLimit 默认最大的直播间数量。
+	DefaultRoomNumberLimit = 20
 )
 
 // RoomController 直播房间创建、关闭、查询等操作。
 type RoomController struct {
 	mongoClient *qmgo.Client
 	roomColl    *qmgo.Collection
-	xl          *xlog.Logger
+	// roomNumberLimit 最大的直播间数量。当直播间数量大于等于该数字时无法创建新的直播间，服务端返回503.
+	roomNumberLimit int
+	xl              *xlog.Logger
 }
 
 // NewRoomController 创建 room controller.
@@ -32,9 +42,10 @@ func NewRoomController(mongoURI string, database string, xl *xlog.Logger) (*Room
 	}
 	roomColl := mongoClient.Database(database).Collection(RoomsCollectionn)
 	return &RoomController{
-		mongoClient: mongoClient,
-		roomColl:    roomColl,
-		xl:          xl,
+		mongoClient:     mongoClient,
+		roomColl:        roomColl,
+		roomNumberLimit: DefaultRoomNumberLimit,
+		xl:              xl,
 	}, nil
 }
 
@@ -43,7 +54,32 @@ func (c *RoomController) CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) er
 	if xl == nil {
 		xl = c.xl
 	}
-	_, err := c.roomColl.InsertOne(context.Background(), room)
+
+	// 查看是否超过房间数量限制。
+	n, err := c.roomColl.Find(context.Background(), bson.M{}).Count()
+	if err != nil {
+		xl.Errorf("failed to get total room number, error %v", err)
+		return &errors.ServerError{Code: errors.ServerErrorMongoOpFail}
+	}
+	if n >= int64(c.roomNumberLimit) {
+		xl.Warnf("room number limit exceeded, current %d, max %d", n, c.roomNumberLimit)
+		return &errors.ServerError{Code: errors.ServerErrorTooManyRooms}
+	}
+
+	// 查看是否已有同名房间。
+	err = c.roomColl.Find(context.Background(), bson.M{"name": room.Name}).One(&protocol.LiveRoom{})
+	if err != nil {
+		if !qmgo.IsErrNoDocuments(err) {
+			xl.Errorf("failed to find room with name %s, error %v", room.Name, err)
+			return &errors.ServerError{Code: errors.ServerErrorMongoOpFail}
+		}
+	} else {
+		xl.Infof("room name %s is already used", room.Name)
+		return &errors.ServerError{Code: errors.ServerErrorRoomNameUsed}
+	}
+	// TODO:限制一个用户只能开一个直播间？
+
+	_, err = c.roomColl.InsertOne(context.Background(), room)
 	if err != nil {
 		xl.Errorf("failed to insert room, error %v", err)
 		return err
@@ -52,11 +88,20 @@ func (c *RoomController) CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) er
 }
 
 // CloseRoom 关闭直播房间
-func (c *RoomController) CloseRoom(xl *xlog.Logger, roomID string) error {
+func (c *RoomController) CloseRoom(xl *xlog.Logger, userID string, roomID string) error {
 	if xl == nil {
 		xl = c.xl
 	}
-	err := c.roomColl.RemoveId(context.Background(), roomID)
+
+	err := c.roomColl.Find(context.Background(), bson.M{"_id": roomID, "creator": userID}).One(&protocol.LiveRoom{})
+	if err != nil {
+		if qmgo.IsErrNoDocuments(err) {
+			xl.Infof("cannot found room %s created by user %s", roomID, userID)
+			return &errors.ServerError{Code: errors.ServerErrorRoomNotFound}
+		}
+		return err
+	}
+	err = c.roomColl.RemoveId(context.Background(), roomID)
 	if err != nil {
 		xl.Errorf("failed to remove room ID %s, error %v", roomID, err)
 		return err
@@ -97,13 +142,16 @@ func (c *RoomController) ListAllRooms(xl *xlog.Logger) ([]protocol.LiveRoom, err
 	return rooms, err
 }
 
-// ListPKRooms 获取可PK直播房间列表
-func (c *RoomController) ListPKRooms(xl *xlog.Logger) ([]protocol.LiveRoom, error) {
+// ListPKRooms 获取可与某一主播PK的直播房间列表
+func (c *RoomController) ListPKRooms(xl *xlog.Logger, userID string) ([]protocol.LiveRoom, error) {
 	if xl == nil {
 		xl = c.xl
 	}
 	rooms := []protocol.LiveRoom{}
 	err := c.roomColl.Find(context.Background(), bson.M{"status": "single"}).All(&rooms)
+	if err != nil {
+		xl.Errorf("failed to list PK rooms, error %v", err)
+	}
 	return rooms, err
 }
 
@@ -122,8 +170,8 @@ func (c *RoomController) UpdateRoom(xl *xlog.Logger, id string, newRoom *protoco
 	if newRoom.RTCRoom != "" {
 		room.RTCRoom = newRoom.RTCRoom
 	}
-	if newRoom.WatchURL != "" {
-		room.WatchURL = newRoom.WatchURL
+	if newRoom.PlayURL != "" {
+		room.PlayURL = newRoom.PlayURL
 	}
 	err = c.roomColl.UpdateOne(context.Background(), bson.M{"_id": id}, bson.M{"$set": room})
 	if err != nil {

@@ -2,9 +2,11 @@ package main
 
 import (
 	"flag"
+	"math/rand"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	qconfig "github.com/qiniu/x/config"
 	"github.com/qiniu/x/log"
@@ -26,6 +28,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to load config file, error %v", err)
 	}
+	log.SetOutputLevel(conf.DebugLevel)
+	rand.Seed(time.Now().UnixNano())
 
 	// 启动 gin HTTP server。
 	r, err := service.NewRouter(conf)
