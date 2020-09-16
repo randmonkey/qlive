@@ -109,3 +109,6 @@ func (m *MockAuth) GetIDByToken(xl *xlog.Logger, token string) (string, error) {
 	}
 	return parts[0], nil
 }
+
+// MockRoom 模拟的房间管理服务。
+type MockRoom struct{}

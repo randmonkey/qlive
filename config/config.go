@@ -42,15 +42,26 @@ type SMSConfig struct {
 	QiniuSMS *QiniuSMSConfig `json:"qiniu_sms"`
 }
 
+// QiniuRTCConfig 七牛RTC服务配置。
+type QiniuRTCConfig struct {
+	KeyPair QiniuKeyPair `json:"key_pair"`
+	AppID   string       `json:"app_id"`
+	// 合流转推的域名。
+	PublishHost string `json:"publish_host"`
+	// 合流转推的Hub名称。
+	PublishHub string `json:"publish_hub"`
+}
+
 // Config 后端配置。
 type Config struct {
 	// debug等级，为1时输出info/warn/error日志，为0除以上外还输出debug日志
 	DebugLevel int    `json:"debug_level"`
 	ListenAddr string `json:"listen_addr"`
 
-	WsConf *WebSocketConf `json:"websocket_conf"`
-	Mongo  *MongoConfig   `json:"mongo"`
-	SMS    *SMSConfig     `json:"sms"`
+	WsConf *WebSocketConf  `json:"websocket_conf"`
+	Mongo  *MongoConfig    `json:"mongo"`
+	SMS    *SMSConfig      `json:"sms"`
+	RTC    *QiniuRTCConfig `json:"rtc"`
 }
 
 // NewSample 返回样例配置。
@@ -76,6 +87,15 @@ func NewSample() *Config {
 				SignatureID: os.Getenv("QINIU_SMS_SIGN_ID"),
 				TemplateID:  os.Getenv("QINIU_SMS_TEMP_ID"),
 			},
+		},
+		RTC: &QiniuRTCConfig{
+			KeyPair: QiniuKeyPair{
+				AccessKey: os.Getenv("QINIU_ACCESS_KEY"),
+				SecretKey: os.Getenv("QINIU_SECRET_KEY"),
+			},
+			AppID:       os.Getenv("QINIU_RTC_APP_ID"),
+			PublishHost: "localhost:1935",
+			PublishHub:  "test",
 		},
 	}
 }

@@ -21,6 +21,7 @@ type HTTPError struct {
 const (
 	HTTPErrorBadRequest         = 400000
 	HTTPErrorInvalidPhoneNumber = 400001
+	HTTPErrorInvalidRoomName    = 400004
 	HTTPErrorBadLoginType       = 400005
 	HTTPErrorUnauthorized       = 401000
 	HTTPErrorNotLoggedIn        = 401001
@@ -29,7 +30,10 @@ const (
 	HTTPErrorAlreadyLoggedIn    = 401004
 	HTTPErrorNotFound           = 404000
 	HTTPErrorNoSuchUser         = 404001
+	HTTPErrorNoSuchRoom         = 404002
+	HTTPErrorRoomNameUsed       = 409002
 	HTTPErrorSMSSendTooFrequent = 429001
+	HTTPErrorTooManyRooms       = 503001
 	HTTPErrorInternal           = 500000
 )
 
@@ -72,6 +76,14 @@ func NewHTTPErrorInvalidPhoneNumber() *HTTPError {
 	return &HTTPError{
 		Code:    HTTPErrorInvalidPhoneNumber,
 		Summary: "invalid phone number",
+	}
+}
+
+// NewHTTPErrorInvalidRoomName 不符合规则的房间名称。
+func NewHTTPErrorInvalidRoomName() *HTTPError {
+	return &HTTPError{
+		Code:    HTTPErrorInvalidRoomName,
+		Summary: "invalid room name",
 	}
 }
 
@@ -139,11 +151,35 @@ func NewHTTPErrorNoSuchUser() *HTTPError {
 	}
 }
 
+// NewHTTPErrorNoSuchRoom 无此房间。
+func NewHTTPErrorNoSuchRoom() *HTTPError {
+	return &HTTPError{
+		Code:    HTTPErrorNoSuchRoom,
+		Summary: "no such room",
+	}
+}
+
+// NewHTTPErrorRoomNameused 直播间名称已被使用。
+func NewHTTPErrorRoomNameused() *HTTPError {
+	return &HTTPError{
+		Code:    HTTPErrorRoomNameUsed,
+		Summary: "room name already used",
+	}
+}
+
 // NewHTTPErrorSMSSendTooFrequent 短信验证码已发送，短时间内不能重复发送。
 func NewHTTPErrorSMSSendTooFrequent() *HTTPError {
 	return &HTTPError{
 		Code:    HTTPErrorSMSSendTooFrequent,
 		Summary: "send sms code request limited",
+	}
+}
+
+// NewHTTPErrorTooManyRooms 直播间数量已达上限。
+func NewHTTPErrorTooManyRooms() *HTTPError {
+	return &HTTPError{
+		Code:    HTTPErrorTooManyRooms,
+		Summary: "room number limit exeeded",
 	}
 }
 

@@ -93,8 +93,8 @@ type LiveRoom struct {
 	CoverURL string `json:"coverURL" bson:"coverURL"`
 	// Creator 直播间创建者的ID。
 	Creator string `json:"creator" bson:"creator"`
-	// WatchURL 观看直播的拉流地址。
-	WatchURL string `json:"watchURL" bson:"watchURL"`
+	// playURL 观看直播的拉流地址。
+	PlayURL string `json:"playURL" bson:"playURL"`
 	// RTCRoom 对应的RTC房间名。
 	RTCRoom string `json:"rtcRoom" bson:"rtcRoom"`
 	// Status 该直播间的当前状态。(单人直播中、PK中、等待PK)

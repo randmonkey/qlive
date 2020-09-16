@@ -20,6 +20,9 @@ const (
 	ServerErrorUserLoggedin       = 10002
 	ServerErrorUserNoPermission   = 10003
 	ServerErrorUserNotfound       = 10004
+	ServerErrorRoomNotFound       = 10005
+	ServerErrorRoomNameUsed       = 10006
+	ServerErrorTooManyRooms       = 10007
 	ServerErrorSMSSendTooFrequent = 10011
 	ServerErrorMongoOpFail        = 11000
 	// 2开头表示外部服务错误。

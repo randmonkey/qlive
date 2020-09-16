@@ -1,11 +1,14 @@
 package service
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/qiniu/x/xlog"
 
 	"github.com/qrtc/qlive/config"
 	"github.com/qrtc/qlive/controller"
+	"github.com/qrtc/qlive/errors"
 	"github.com/qrtc/qlive/handler"
 	"github.com/qrtc/qlive/protocol"
 )
@@ -36,13 +39,31 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 	authHandler := &handler.AuthHandler{
 		Auth: authController,
 	}
+
+	roomController, err := controller.NewRoomController(conf.Mongo.URI, conf.Mongo.Database, nil)
+	if err != nil {
+		return nil, err
+	}
+	roomHandler := &handler.RoomHandler{
+		Room:     roomController,
+		LiveHost: conf.RTC.PublishHost,
+		LiveHub:  conf.RTC.PublishHub,
+	}
+
 	v1 := router.Group("/v1")
 	{
+		// 账号相关API。
 		v1.POST("login", addRequestID, accountHandler.Login)
 		v1.POST("send_sms_code", addRequestID, accountHandler.SendSMSCode)
 		v1.POST("profile", addRequestID, authHandler.Authenticate, accountHandler.UpdateProfile)
 		v1.POST("logout", addRequestID, authHandler.Authenticate, accountHandler.Logout)
+
+		// 主播端API：创建、关闭房间。
+		v1.POST("rooms", addRequestID, authHandler.Authenticate, roomHandler.CreateRoom)
+		v1.POST("close_room", addRequestID, authHandler.Authenticate, roomHandler.CloseRoom)
+
 	}
+	router.NoRoute(addRequestID, returnNotFound)
 	return router, nil
 }
 
@@ -54,4 +75,11 @@ func addRequestID(c *gin.Context) {
 	}
 	xl := xlog.New(requestID)
 	c.Set(protocol.XLogKey, xl)
+}
+
+func returnNotFound(c *gin.Context) {
+	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
+	httpErr := errors.NewHTTPErrorNotFound().WithRequestID(xl.ReqId)
+	xl.Debugf("%s %s: not found", c.Request.Method, c.Request.URL.Path)
+	c.JSON(http.StatusNotFound, httpErr)
 }

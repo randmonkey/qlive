@@ -55,7 +55,7 @@ type GetRoomResponse struct {
 	Creator UserInfo `json:"creator"`
 	// TODO：添加创建者的昵称/性别等信息？
 	// WatchURL 观看地址
-	WatchURL string `json:"watchURL"`
+	PlayURL string `json:"playURL"`
 	// TODO：添加观众详情？or只返回一个观众人数
 	Audiences []string `json:"audiences"`
 	// 房间状态，单人直播中/PK中。
@@ -83,7 +83,7 @@ type EnterRoomResponse struct {
 	RoomID   string `json:"roomID"`
 	RoomName string `json:"roomName"`
 	// 直播间的拉流观看地址。
-	WatchURL string `json:"watchURL"`
+	PlayURL string `json:"playURL"`
 	// 直播间创建者信息。
 	Creator UserInfo `json:"creator"`
 	// TODO：添加创建者的昵称/性别等信息？
@@ -115,6 +115,8 @@ type CreateRoomResponse struct {
 	RoomName string `json:"roomName"`
 	// RTCRoom 对应的RTC房间。
 	RTCRoom string `json:"rtcRoom"`
+	// RTCRoomToken 创建/加入RTC房间的token。
+	RTCRoomToken string `json:"rtcRoomToken"`
 	// IMUser TODO:IM聊天用户信息。
 	IMUser IMUserInfo `json:"imUser"`
 	// IMGroup TODO:IM聊天群组信息。
