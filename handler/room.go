@@ -3,20 +3,23 @@ package handler
 import (
 	"math/rand"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	qiniuauth "github.com/qiniu/api.v7/v7/auth"
+	qiniurtc "github.com/qiniu/api.v7/v7/rtc"
 	"github.com/qiniu/x/xlog"
 
+	"github.com/qrtc/qlive/config"
 	"github.com/qrtc/qlive/errors"
 	"github.com/qrtc/qlive/protocol"
 )
 
 // RoomHandler 处理直播间的CRUD，以及进入、退出房间等操作。
 type RoomHandler struct {
-	Account  AccountInterface
-	Room     RoomInterface
-	LiveHost string
-	LiveHub  string
+	Account   AccountInterface
+	Room      RoomInterface
+	RTCConfig *config.QiniuRTCConfig
 }
 
 // RoomInterface 处理房间相关API的接口。
@@ -145,7 +148,7 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 		RoomID:       roomID,
 		RoomName:     args.RoomName,
 		RTCRoom:      roomID,
-		RTCRoomToken: h.generateRTCRoomToken(roomID),
+		RTCRoomToken: h.generateRTCRoomToken(roomID, userID, "admin"),
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -172,12 +175,26 @@ func (h *RoomHandler) generateRoomID() string {
 }
 
 func (h *RoomHandler) generatePlayURL(roomID string) string {
-	return "rtmp://" + h.LiveHost + "/" + h.LiveHub + "/" + roomID
+	return "rtmp://" + h.RTCConfig.PublishHost + "/" + h.RTCConfig.PublishHub + "/" + roomID
 }
 
-// TODO:生成加入RTC房间的room token。
-func (h *RoomHandler) generateRTCRoomToken(roomID string) string {
-	return ""
+// 生成加入RTC房间的room token。
+func (h *RoomHandler) generateRTCRoomToken(roomID string, userID string, permission string) string {
+	rtcClient := qiniurtc.NewManager(&qiniuauth.Credentials{
+		AccessKey: h.RTCConfig.KeyPair.AccessKey,
+		SecretKey: []byte(h.RTCConfig.KeyPair.SecretKey),
+	})
+	rtcRoomTokenTimeout := 60 * time.Second
+	roomAccess := qiniurtc.RoomAccess{
+		AppID:    h.RTCConfig.AppID,
+		RoomName: roomID,
+		UserID:   userID,
+		ExpireAt: time.Now().Add(rtcRoomTokenTimeout).Unix(),
+		// Permission分admin/user，直播间创建者需要admin权限。
+		Permission: permission,
+	}
+	token, _ := rtcClient.GetRoomToken(roomAccess)
+	return token
 }
 
 // CloseRoom 关闭直播间。

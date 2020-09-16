@@ -45,10 +45,9 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		return nil, err
 	}
 	roomHandler := &handler.RoomHandler{
-		Account:  accountController,
-		Room:     roomController,
-		LiveHost: conf.RTC.PublishHost,
-		LiveHub:  conf.RTC.PublishHub,
+		Account:   accountController,
+		Room:      roomController,
+		RTCConfig: conf.RTC,
 	}
 
 	v1 := router.Group("/v1")
