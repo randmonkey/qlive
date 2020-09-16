@@ -1,7 +1,5 @@
 package protocol
 
-import "encoding/json"
-
 /*
 	protocol.go: 规定API的参数与返回值的定义，***Args 表示 *** 接口的参数，***Response表示 *** 接口的返回体格式。
 */
@@ -155,76 +153,4 @@ type EndPKArgs struct {
 	RoomID string `json:"roomID"`
 	// PKRoomID PK中的直播间ID。
 	PKRoomID string `json:"pkRoomID"`
-}
-
-// WebSocket Message Type
-const (
-	MT_Ping              = "ping"
-	MT_Pong              = "pong"
-	MT_Authorize         = "auth"
-	MT_AuthorizeResponse = "auth-res"
-	MT_Disconnect        = "disconnect"
-)
-
-type Ping struct {
-}
-
-func (p *Ping) Marshal() ([]byte, error) {
-	return json.Marshal(p)
-}
-
-func (p *Ping) Unmarshal(b []byte) error {
-	return json.Unmarshal(b, p)
-}
-
-type Pong struct {
-}
-
-func (p *Pong) Marshal() ([]byte, error) {
-	return json.Marshal(p)
-}
-
-func (p *Pong) Unmarshal(b []byte) error {
-	return json.Unmarshal(b, p)
-}
-
-type Authorize struct {
-	RPCID string `json:"rpcID,omitempty"`
-	Token string `json:"token"`
-}
-
-func (p *Authorize) Marshal() ([]byte, error) {
-	return json.Marshal(p)
-}
-
-func (p *Authorize) Unmarshal(b []byte) error {
-	return json.Unmarshal(b, p)
-}
-
-type AuthorizeResponse struct {
-	RPCID string `json:"rpcID,omitempty"`
-	Code  int    `json:"code"`
-	Error string `json:"error"`
-}
-
-func (p *AuthorizeResponse) Marshal() ([]byte, error) {
-	return json.Marshal(p)
-}
-
-func (p *AuthorizeResponse) Unmarshal(b []byte) error {
-	return json.Unmarshal(b, p)
-}
-
-type Disconnect struct {
-	Code     int    `json:"code"`
-	Error    string `json:"error"`
-	KickedID string `json:"kickedID"`
-}
-
-func (p *Disconnect) Marshal() ([]byte, error) {
-	return json.Marshal(p)
-}
-
-func (p *Disconnect) Unmarshal(b []byte) error {
-	return json.Unmarshal(b, p)
 }
