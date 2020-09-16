@@ -13,6 +13,7 @@ import (
 
 // RoomHandler 处理直播间的CRUD，以及进入、退出房间等操作。
 type RoomHandler struct {
+	Account  AccountInterface
 	Room     RoomInterface
 	LiveHost string
 	LiveHub  string
@@ -27,11 +28,16 @@ type RoomInterface interface {
 	ListPKRooms(xl *xlog.Logger, userID string) ([]protocol.LiveRoom, error)
 	// CloseRoom 关闭直播间。
 	CloseRoom(xl *xlog.Logger, userID string, roomID string) error
+	// EnterRoom 进入直播间。
+	EnterRoom(xl *xlog.Logger, userID string, roomID string) (*protocol.LiveRoom, error)
+	// LeaveRoom 退出直播间。
+	LeaveRoom(xl *xlog.Logger, userID string, roomID string) error
+	// ListRoom 获取直播间列表。
+	ListRooms(xl *xlog.Logger, onlyListPkRooms string, userID string) ([]protocol.LiveRoom, error)
 }
 
 // ListRooms 列出房间请求。
 func (h *RoomHandler) ListRooms(c *gin.Context) {
-
 	if c.Query("can_pk") == "true" {
 		h.ListCanPKRooms(c)
 		return
@@ -47,7 +53,9 @@ func (h *RoomHandler) ListCanPKRooms(c *gin.Context) {
 	rooms, err := h.Room.ListPKRooms(xl, userID)
 	if err != nil {
 		xl.Errorf("failed to list rooms which can be PKed, error %v", err)
-
+		httpErr := errors.NewHTTPErrorInternal()
+		c.JSON(http.StatusInternalServerError, httpErr)
+		return
 	}
 	resp := &protocol.ListRoomsResponse{}
 	for _, room := range rooms {
@@ -56,11 +64,27 @@ func (h *RoomHandler) ListCanPKRooms(c *gin.Context) {
 			Name: room.Name,
 		})
 	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // ListAllRooms 列出全部房间。
 func (h *RoomHandler) ListAllRooms(c *gin.Context) {
-
+	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
+	rooms, err := h.Room.ListAllRooms(xl)
+	if err != nil {
+		xl.Errorf("failed to list all rooms, error %v", err)
+		httpErr := errors.NewHTTPErrorInternal()
+		c.JSON(http.StatusInternalServerError, httpErr)
+		return
+	}
+	resp := &protocol.ListRoomsResponse{}
+	for _, room := range rooms {
+		resp.Rooms = append(resp.Rooms, protocol.GetRoomResponse{
+			ID:   room.ID,
+			Name: room.Name,
+		})
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // CreateRoom 创建直播间。
@@ -196,3 +220,158 @@ func (h *RoomHandler) CloseRoom(c *gin.Context) {
 	xl.Infof("user %s closed room: ID %s", userID, args.RoomID)
 	// return OK
 }
+
+// EnterRoom 进入直播间。
+func (h *RoomHandler) EnterRoom(c *gin.Context) {
+	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
+	requestID := xl.ReqId
+
+	args := &protocol.EnterRoomRequest{}
+	bindErr := c.BindJSON(&args)
+	if bindErr != nil {
+		xl.Infof("invalid args in request body, error %v", bindErr)
+		httpError := errors.NewHTTPErrorBadRequest().WithRequestID(requestID).WithMessage("invalid args in request body")
+		c.JSON(http.StatusBadRequest, httpError)
+		return
+	}
+
+	updatedRoom, err := h.Room.EnterRoom(xl, args.UserID, args.RoomID)
+	if err != nil {
+		xl.Errorf("enter room failed, enter room request: %v, error: %v", args, err)
+		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
+		c.JSON(http.StatusInternalServerError, httpErr)
+		return
+	}
+
+	ret := &protocol.EnterRoomResponse{}
+	// 获取creator的userInfo
+	creator, err := h.Account.GetAccountByID(xl, updatedRoom.ID)
+	if err != nil {
+		xl.Errorf("creator %v is not found", creator)
+		httpErr := errors.NewHTTPErrorNoSuchUser().WithRequestID(requestID)
+		c.JSON(http.StatusInternalServerError, httpErr)
+		return
+	}
+	creatorInfo := protocol.UserInfo{
+		ID:       creator.ID,
+		Nickname: creator.Nickname,
+		Gender:   creator.Gender,
+	}
+
+	// 获取PKstreamer的userInfo
+	pkStreamerInfo := &protocol.UserInfo{}
+	if updatedRoom.Status == protocol.LiveRoomStatusPK {
+		pkStreamer, err := h.Account.GetAccountByID(xl, updatedRoom.PKStreamer)
+		if err != nil {
+			xl.Errorf("pkStreamer %v is not found", pkStreamer)
+			httpErr := errors.NewHTTPErrorNoSuchUser().WithRequestID(requestID)
+			c.JSON(http.StatusInternalServerError, httpErr)
+			return
+		}
+		pkStreamerInfo = &protocol.UserInfo{
+			ID:       pkStreamer.ID,
+			Nickname: pkStreamer.Nickname,
+			Gender:   pkStreamer.Gender,
+		}
+	}
+
+	ret = &protocol.EnterRoomResponse{
+		RoomID:       updatedRoom.ID,
+		RoomName:     updatedRoom.Name,
+		PlayURL:      updatedRoom.PlayURL,
+		Creator:      creatorInfo,
+		Status:       string(updatedRoom.Status),
+		PKStreamerID: pkStreamerInfo,
+		IMUser:       protocol.IMUserInfo{},
+		IMGroup:      protocol.IMGroupInfo{},
+	}
+
+	c.JSON(http.StatusOK, ret)
+}
+
+// LeaveRoom 离开直播间。
+func (h *RoomHandler) LeaveRoom(c *gin.Context) {
+	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
+	requestID := xl.ReqId
+
+	args := &protocol.LeaveRoomArgs{}
+	bindErr := c.BindJSON(&args)
+	if bindErr != nil {
+		xl.Infof("invalid args in request body, error %v", bindErr)
+		httpErr := errors.NewHTTPErrorBadRequest().WithRequestID(requestID).WithMessage("invalid args in request body")
+		c.JSON(http.StatusBadRequest, httpErr)
+		return
+	}
+
+	err := h.Room.LeaveRoom(xl, args.UserID, args.RoomID)
+	if err != nil {
+		xl.Infof("error when leaving room, error: %v", err)
+		httpErr := errors.NewHTTPErrorBadRequest().WithRequestID(requestID)
+		c.JSON(http.StatusBadRequest, httpErr)
+	}
+
+	return
+}
+
+//// ListRooms 获取直播间列表。
+//func (h *RoomHandler) ListRooms(c *gin.Context) {
+//	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
+//	requestID := xl.ReqId
+//
+//	onlyListPkRooms := c.DefaultQuery("can_pk", "false")
+//	// userId不需要使用
+//	roomLists,err:=h.Room.ListRooms(xl, onlyListPkRooms, "")
+//	if err!=nil{
+//		xl.Errorf("access room lists failed, error: %v", err)
+//		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
+//		c.JSON(http.StatusInternalServerError, httpErr)
+//		return
+//	}
+//
+//	ret := &protocol.ListRoomsResponse{}
+//	for _, room := range roomLists {
+//		// 获取creator的userInfo
+//		creator, err := h.Account.GetAccountByID(xl, room.ID)
+//		if err != nil {
+//			xl.Errorf("creator %v is not found", creator)
+//			httpErr := errors.NewHTTPErrorNoSuchUser().WithRequestID(requestID)
+//			c.JSON(http.StatusInternalServerError, httpErr)
+//			return
+//		}
+//		creatorInfo := protocol.UserInfo{
+//			ID:       creator.ID,
+//			Nickname: creator.Nickname,
+//			Gender:   creator.Gender,
+//		}
+//
+//		// 获取PKstreamer的userInfo
+//		pkStreamerInfo:=&protocol.UserInfo{}
+//		if room.Status==protocol.LiveRoomStatusPK{
+//			pkStreamer, err := h.Account.GetAccountByID(xl, room.PKStreamer)
+//			if err != nil {
+//				xl.Errorf("pkStreamer %v is not found", pkStreamer)
+//				httpErr := errors.NewHTTPErrorNoSuchUser().WithRequestID(requestID)
+//				c.JSON(http.StatusInternalServerError, httpErr)
+//				return
+//			}
+//			pkStreamerInfo = &protocol.UserInfo{
+//				ID:       pkStreamer.ID,
+//				Nickname: pkStreamer.Nickname,
+//				Gender:   pkStreamer.Gender,
+//			}
+//		}
+//
+//		ret.Rooms = append(
+//			ret.Rooms, protocol.GetRoomResponse{
+//				ID:         room.ID,
+//				Name:       room.Name,
+//				Creator:    creatorInfo,
+//				PlayURL:   room.PlayURL,
+//				Audiences:  room.Audiences,
+//				Status:     string(room.Status),
+//				PKStreamer: pkStreamerInfo,
+//			})
+//	}
+//
+//	c.JSON(http.StatusOK, ret)
+//}

@@ -3,13 +3,13 @@ package controller
 import (
 	"context"
 	"fmt"
-
 	"go.mongodb.org/mongo-driver/bson"
 
 	"github.com/qiniu/qmgo"
 	"github.com/qiniu/x/xlog"
 
 	"github.com/qrtc/qlive/errors"
+	"github.com/qrtc/qlive/handler"
 	"github.com/qrtc/qlive/protocol"
 )
 
@@ -25,10 +25,11 @@ type RoomController struct {
 	// roomNumberLimit 最大的直播间数量。当直播间数量大于等于该数字时无法创建新的直播间，服务端返回503.
 	roomNumberLimit int
 	xl              *xlog.Logger
+	accountHandler  handler.AccountHandler
 }
 
 // NewRoomController 创建 room controller.
-func NewRoomController(mongoURI string, database string, xl *xlog.Logger) (*RoomController, error) {
+func NewRoomController(mongoURI string, database string, account *handler.AccountHandler, xl *xlog.Logger) (*RoomController, error) {
 	if xl == nil {
 		xl = xlog.New("qlive-room-controller")
 	}
@@ -46,6 +47,7 @@ func NewRoomController(mongoURI string, database string, xl *xlog.Logger) (*Room
 		roomColl:        roomColl,
 		roomNumberLimit: DefaultRoomNumberLimit,
 		xl:              xl,
+		accountHandler:  *account,
 	}, nil
 }
 
@@ -179,4 +181,62 @@ func (c *RoomController) UpdateRoom(xl *xlog.Logger, id string, newRoom *protoco
 		return nil, err
 	}
 	return room, nil
+}
+
+// EnterRoom 进入直播房间。
+func (c *RoomController) EnterRoom(xl *xlog.Logger, userID string, roomID string) (*protocol.LiveRoom, error) {
+	if xl == nil {
+		xl = c.xl
+	}
+	room, err := c.GetRoomByID(xl, roomID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 用户进入房间
+	room.Audiences = append(room.Audiences, userID)
+	updatedRoom, err := c.UpdateRoom(xl, room.ID, room)
+	if err != nil {
+		xl.Infof("error when updating room %v", err)
+		return nil, err
+	}
+
+	return updatedRoom, nil
+}
+
+// LeaveRoom 退出直播房间。
+func (c *RoomController) LeaveRoom(xl *xlog.Logger, userID string, roomID string) error {
+	if xl == nil {
+		xl = c.xl
+	}
+	room, err := c.GetRoomByID(xl, roomID)
+	if err != nil {
+		return err
+	}
+
+	//TODO 用户退出房间，不在房间是否需要err？
+	for index, audience := range room.Audiences {
+		if audience == userID {
+			room.Audiences = append(room.Audiences[:index], room.Audiences[index+1:]...)
+		}
+	}
+	_, err = c.UpdateRoom(xl, room.ID, room)
+	if err != nil {
+		xl.Infof("error when updating room %v", err)
+		return err
+	}
+
+	return nil
+}
+
+// ListRooms 获取直播间列表
+func (c *RoomController) ListRooms(xl *xlog.Logger, onlyListPkRooms string, userID string) ([]protocol.LiveRoom, error) {
+	var roomLists []protocol.LiveRoom
+	var err error
+	if onlyListPkRooms == "true" {
+		roomLists, err = c.ListPKRooms(xl, userID)
+	} else {
+		roomLists, err = c.ListAllRooms(xl)
+	}
+	return roomLists, err
 }
