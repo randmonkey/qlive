@@ -58,8 +58,8 @@ type GetRoomResponse struct {
 	Audiences []string `json:"audiences"`
 	// 房间状态，单人直播中/PK中。
 	Status string `json:"status"`
-	// PKStreamer 若房间PK中，返回PK主播的信息。
-	PKStreamer *UserInfo `json:"pkStreamer,omitempty"`
+	// PKAnchor 若房间PK中，返回PK主播的信息。
+	PKAnchor *UserInfo `json:"pkAnchor,omitempty"`
 }
 
 // ListRoomsResponse 列出房间的返回结果。
@@ -87,8 +87,8 @@ type EnterRoomResponse struct {
 	// TODO：添加创建者的昵称/性别等信息？
 	// Status 房间的状态，单人直播中/PK中
 	Status string `json:"status"`
-	// PKStreamerID 若正在PK，返回PK主播的信息。未在PK时该字段为空。
-	PKStreamerID *UserInfo `json:"pkStreamer,omitempty"`
+	// PKAnchorID 若正在PK，返回PK主播的信息。未在PK时该字段为空。
+	PKAnchorID *UserInfo `json:"pkAnchor,omitempty"`
 	// IMUser IM聊天用户信息。
 	IMUser IMUser `json:"imUser"`
 	// IMGroup IM聊天室信息。

@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	qiniuauth "github.com/qiniu/api.v7/v7/auth"
+	qiniurtc "github.com/qiniu/api.v7/v7/rtc"
 	"github.com/qiniu/x/xlog"
 	"github.com/someonegg/msgpump"
 	"go.uber.org/atomic"
@@ -24,17 +26,14 @@ type PMessage interface {
 }
 
 type WSClient struct {
-	s  *WSServer
-	p  *msgpump.Pump
-	st time.Time
-	xl *xlog.Logger
-
-	playerID      string
-	online        *atomic.Bool
-	authorizeDone chan struct{}
-
-	remoteAddr string
-
+	s               *WSServer
+	p               *msgpump.Pump
+	st              time.Time
+	xl              *xlog.Logger
+	playerID        string
+	online          *atomic.Bool
+	authorizeDone   chan struct{}
+	remoteAddr      string
 	lastMessageTime time.Time
 }
 
@@ -138,10 +137,10 @@ func (c *WSClient) parallelProcess(ctx context.Context, t string, m msgpump.Mess
 		c.onAuthorize(ctx, m)
 	case protocol.MT_StartPKRequest:
 		c.onStartPK(ctx, m)
-	case protocol.MT_EndPKRequest:
-		c.onEndPK(ctx, m)
 	case protocol.MT_AnswerPKRequest:
 		c.onAnswerPK(ctx, m)
+	case protocol.MT_EndPKRequest:
+		c.onEndPK(ctx, m)
 	default:
 		c.xl.Errorf("unknown message from %v, %v=%v", c.playerID, t, string(m))
 	}
@@ -204,24 +203,163 @@ func (c *WSClient) onStartPK(ctx context.Context, m msgpump.Message) {
 		c.Notify(protocol.MT_StartResponse, res)
 		return
 	}
-	// TODO
-	// A 向 B 发起 PK，发送 offer-notify 给 B
-}
-
-func (c *WSClient) onEndPK(ctx context.Context, m msgpump.Message) {
-	var req protocol.EndPKRequest
-	err := req.Unmarshal(m)
+	// 判断房间是否满足 PK 条件
+	pkRoom, err := c.s.roomCtl.GetRoomByID(c.xl, req.PKRoomID)
 	if err != nil {
-		res := &protocol.EndPKResponse{
+		res := &protocol.StartPKResponse{
 			RPCID: req.RPCID,
-			Code:  errors.WSErrorUnknownMessage,
-			Error: errors.WSErrorToString[errors.WSErrorUnknownMessage],
+			Code:  errors.WSErrorRoomNoExist,
+			Error: errors.WSErrorToString[errors.WSErrorRoomNoExist],
 		}
-		c.Notify(protocol.MT_EndPKResponse, res)
+		c.Notify(protocol.MT_StartResponse, res)
 		return
 	}
-	// TODO
-	// A 结束 PK
+	if pkRoom.Status != protocol.LiveRoomStatusSingle {
+		res := &protocol.StartPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorRoomInPK,
+			Error: errors.WSErrorToString[errors.WSErrorRoomInPK],
+		}
+		c.Notify(protocol.MT_StartResponse, res)
+		return
+	}
+	selfRoom, err := c.s.roomCtl.GetRoomByFields(c.xl, map[string]interface{}{"creator": c.playerID})
+	if err != nil {
+		res := &protocol.StartPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_StartResponse, res)
+		return
+	}
+	if selfRoom.Status != protocol.LiveRoomStatusSingle {
+		res := &protocol.StartPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorRoomInPK,
+			Error: errors.WSErrorToString[errors.WSErrorRoomInPK],
+		}
+		c.Notify(protocol.MT_StartResponse, res)
+		return
+	}
+
+	pkPlayer, err := c.s.accountCtl.GetAccountByID(c.xl, pkRoom.Creator)
+	if err != nil {
+		res := &protocol.StartPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorPlayerNoExist,
+			Error: errors.WSErrorToString[errors.WSErrorPlayerNoExist],
+		}
+		c.Notify(protocol.MT_StartResponse, res)
+		return
+	}
+
+	selfPlayer, err := c.s.accountCtl.GetAccountByID(c.xl, c.playerID)
+	if err != nil {
+		res := &protocol.StartPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_StartResponse, res)
+		return
+	}
+	pkActiveUser, err := c.s.accountCtl.GetActiveUserByID(c.xl, pkPlayer.ID)
+	if err != nil {
+		res := &protocol.StartPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_StartResponse, res)
+		return
+	}
+	selfActiveUser, err := c.s.accountCtl.GetActiveUserByID(c.xl, selfPlayer.ID)
+	if err != nil {
+		res := &protocol.StartPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_StartResponse, res)
+		return
+	}
+
+	// 发送 PK Offer 通知
+	pkMessage := &protocol.PKOfferNotify{
+		RPCID:    NewReqID(),
+		UserID:   selfPlayer.ID,
+		Nickname: selfPlayer.Nickname,
+		RoomID:   selfRoom.ID,
+		RoomName: selfRoom.Name,
+	}
+	if err := c.s.NotifyPlayer(pkPlayer.ID, protocol.MT_PKOfferNotify, pkMessage); err != nil {
+		res := &protocol.StartPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorPlayerOffline,
+			Error: errors.WSErrorToString[errors.WSErrorPlayerOffline],
+		}
+		c.Notify(protocol.MT_StartResponse, res)
+		return
+	}
+
+	// 修改状态
+	selfRoom.Status = protocol.LiveRoomStatusWaitPK
+	pkRoom.Status = protocol.LiveRoomStatusWaitPK
+
+	_, err = c.s.roomCtl.UpdateRoom(c.xl, selfRoom.ID, selfRoom)
+	if err != nil {
+		res := &protocol.StartPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_StartResponse, res)
+		return
+	}
+	_, err = c.s.roomCtl.UpdateRoom(c.xl, pkRoom.ID, pkRoom)
+	if err != nil {
+		res := &protocol.StartPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_StartResponse, res)
+		return
+	}
+
+	selfActiveUser.Status = protocol.UserStatusPKWait
+	pkActiveUser.Status = protocol.UserStatusPKWait
+
+	_, err = c.s.accountCtl.UpdateActiveUser(c.xl, selfPlayer.ID, selfActiveUser)
+	if err != nil {
+		res := &protocol.StartPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_StartResponse, res)
+		return
+	}
+	_, err = c.s.accountCtl.UpdateActiveUser(c.xl, pkPlayer.ID, pkActiveUser)
+	if err != nil {
+		res := &protocol.StartPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_StartResponse, res)
+		return
+	}
+
+	// 成功返回
+	res := &protocol.StartPKResponse{
+		RPCID: req.RPCID,
+		Code:  errors.WSErrorOK,
+		Error: errors.WSErrorToString[errors.WSErrorOK],
+	}
+	c.Notify(protocol.MT_StartResponse, res)
+	return
 }
 
 func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
@@ -236,8 +374,359 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 		c.Notify(protocol.MT_AnswerPKResponse, res)
 		return
 	}
-	// TODO
-	// B 应答 A 发起的 PK，发送 answer-notify 给 A
+
+	pkRoom, err := c.s.roomCtl.GetRoomByID(c.xl, req.PKRoomID)
+	if err != nil {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorRoomNoExist,
+			Error: errors.WSErrorToString[errors.WSErrorRoomNoExist],
+		}
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
+	selfRoom, err := c.s.roomCtl.GetRoomByFields(c.xl, map[string]interface{}{"creator": c.playerID})
+	if err != nil {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
+	pkPlayer, err := c.s.accountCtl.GetAccountByID(c.xl, pkRoom.Creator)
+	if err != nil {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorPlayerNoExist,
+			Error: errors.WSErrorToString[errors.WSErrorPlayerNoExist],
+		}
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
+	selfPlayer, err := c.s.accountCtl.GetAccountByID(c.xl, c.playerID)
+	if err != nil {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
+	pkActiveUser, err := c.s.accountCtl.GetActiveUserByID(c.xl, pkPlayer.ID)
+	if err != nil {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
+	selfActiveUser, err := c.s.accountCtl.GetActiveUserByID(c.xl, selfPlayer.ID)
+	if err != nil {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
+
+	if req.Accept {
+		if selfRoom.Status != protocol.LiveRoomStatusSingle {
+			res := &protocol.AnswerPKResponse{
+				RPCID: req.RPCID,
+				Code:  errors.WSErrorRoomInPK,
+				Error: errors.WSErrorToString[errors.WSErrorRoomInPK],
+			}
+			c.Notify(protocol.MT_AnswerPKResponse, res)
+			return
+		}
+		if pkRoom.Status != protocol.LiveRoomStatusWaitPK {
+			res := &protocol.AnswerPKResponse{
+				RPCID: req.RPCID,
+				Code:  errors.WSErrorRoomNotInPK,
+				Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
+			}
+			c.Notify(protocol.MT_AnswerPKResponse, res)
+			return
+		}
+	}
+
+	// 通知发起者
+	answerMessage := &protocol.PKAnswerNotify{
+		RPCID:    NewReqID(),
+		PKRoomID: req.PKRoomID,
+		Accepted: req.Accept,
+	}
+	if req.Accept {
+		answerMessage.RTCRoom = selfRoom.ID
+		answerMessage.RTCRoomToken = c.s.generateRTCRoomToken(selfRoom.ID, pkPlayer.ID, "user")
+	}
+	if err := c.s.NotifyPlayer(pkPlayer.ID, protocol.MT_PKAnswerNotify, answerMessage); err != nil {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorPlayerOffline,
+			Error: errors.WSErrorToString[errors.WSErrorPlayerOffline],
+		}
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
+
+	// 修改状态
+	if req.Accept {
+		selfRoom.Status = protocol.LiveRoomStatusPK
+		selfRoom.PKAnchor = pkPlayer.ID
+		pkRoom.Status = protocol.LiveRoomStatusPK
+		selfActiveUser.Status = protocol.UserStatusPKLive
+		pkActiveUser.Status = protocol.UserStatusPKLive
+		pkActiveUser.Room = selfRoom.ID
+	} else {
+		selfRoom.Status = protocol.LiveRoomStatusSingle
+		pkRoom.Status = protocol.LiveRoomStatusSingle
+		selfActiveUser.Status = protocol.UserStatusSingleLive
+		pkActiveUser.Status = protocol.UserStatusSingleLive
+	}
+
+	_, err = c.s.roomCtl.UpdateRoom(c.xl, selfRoom.ID, selfRoom)
+	if err != nil {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
+	_, err = c.s.roomCtl.UpdateRoom(c.xl, pkRoom.ID, pkRoom)
+	if err != nil {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
+
+	_, err = c.s.accountCtl.UpdateActiveUser(c.xl, selfPlayer.ID, selfActiveUser)
+	if err != nil {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
+	_, err = c.s.accountCtl.UpdateActiveUser(c.xl, pkPlayer.ID, pkActiveUser)
+	if err != nil {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
+
+	// 成功返回
+	res := &protocol.AnswerPKResponse{
+		PKRoomID: req.PKRoomID,
+		RPCID:    req.RPCID,
+		Code:     errors.WSErrorOK,
+		Error:    errors.WSErrorToString[errors.WSErrorOK],
+	}
+	c.Notify(protocol.MT_AnswerPKResponse, res)
+	return
+}
+
+func (c *WSClient) onEndPK(ctx context.Context, m msgpump.Message) {
+	var req protocol.EndPKRequest
+	err := req.Unmarshal(m)
+	if err != nil {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorUnknownMessage,
+			Error: errors.WSErrorToString[errors.WSErrorUnknownMessage],
+		}
+		c.Notify(protocol.MT_EndPKResponse, res)
+		return
+	}
+
+	// 获取信息
+	pkRoom, err := c.s.roomCtl.GetRoomByID(c.xl, req.PKRoomID)
+	if err != nil {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorRoomNoExist,
+			Error: errors.WSErrorToString[errors.WSErrorRoomNoExist],
+		}
+		c.Notify(protocol.MT_EndPKResponse, res)
+		return
+	}
+	selfPlayer, err := c.s.accountCtl.GetAccountByID(c.xl, c.playerID)
+	if err != nil {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_EndPKResponse, res)
+		return
+	}
+	selfActiveUser, err := c.s.accountCtl.GetActiveUserByID(c.xl, selfPlayer.ID)
+	if err != nil {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_EndPKResponse, res)
+		return
+	}
+
+	var otherPlayerID string
+	if selfPlayer.ID == pkRoom.Creator {
+		otherPlayerID = pkRoom.PKAnchor
+	} else {
+		otherPlayerID = pkRoom.Creator
+	}
+	otherPlayer, err := c.s.accountCtl.GetAccountByID(c.xl, otherPlayerID)
+	if err != nil {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_EndPKResponse, res)
+		return
+	}
+	otherActiveUser, err := c.s.accountCtl.GetActiveUserByID(c.xl, otherPlayerID)
+	if err != nil {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_EndPKResponse, res)
+		return
+	}
+
+	otherRoom, err := c.s.roomCtl.GetRoomByFields(c.xl, map[string]interface{}{"creater": pkRoom.PKAnchor})
+	if err != nil {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_EndPKResponse, res)
+		return
+	}
+
+	// 权限检查
+	if req.PKRoomID != selfActiveUser.Room {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorNoPermission,
+			Error: errors.WSErrorToString[errors.WSErrorNoPermission],
+		}
+		c.Notify(protocol.MT_EndPKResponse, res)
+		return
+	}
+
+	// 状态检查
+	if pkRoom.Status != protocol.LiveRoomStatusPK {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorRoomNotInPK,
+			Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
+		}
+		c.Notify(protocol.MT_EndPKResponse, res)
+		return
+	}
+
+	// 通知 PK 另一方
+	endMessage := &protocol.PKEndNotify{
+		RPCID:    NewReqID(),
+		PKRoomID: req.PKRoomID,
+	}
+	if err := c.s.NotifyPlayer(otherPlayer.ID, protocol.MT_PKEndNotify, endMessage); err != nil {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorPlayerOffline,
+			Error: errors.WSErrorToString[errors.WSErrorPlayerOffline],
+		}
+		c.Notify(protocol.MT_EndPKResponse, res)
+		return
+	}
+
+	// 修改状态
+	pkRoom.PKAnchor = ""
+	pkRoom.Status = protocol.LiveRoomStatusSingle
+	otherRoom.Status = protocol.LiveRoomStatusSingle
+	selfActiveUser.Status = protocol.UserStatusSingleLive
+	otherActiveUser.Status = protocol.UserStatusSingleLive
+	if selfPlayer.ID == pkRoom.Creator {
+		otherActiveUser.Room = otherRoom.ID
+	} else {
+		selfActiveUser.Room = otherRoom.ID
+	}
+
+	_, err = c.s.roomCtl.UpdateRoom(c.xl, pkRoom.ID, pkRoom)
+	if err != nil {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_EndPKResponse, res)
+		return
+	}
+	_, err = c.s.roomCtl.UpdateRoom(c.xl, otherRoom.ID, otherRoom)
+	if err != nil {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_EndPKResponse, res)
+		return
+	}
+
+	_, err = c.s.accountCtl.UpdateActiveUser(c.xl, selfPlayer.ID, selfActiveUser)
+	if err != nil {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_EndPKResponse, res)
+		return
+	}
+	_, err = c.s.accountCtl.UpdateActiveUser(c.xl, otherPlayer.ID, otherActiveUser)
+	if err != nil {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		c.Notify(protocol.MT_EndPKResponse, res)
+		return
+	}
+
+	// 成功返回
+	res := &protocol.EndPKResponse{
+		RPCID: req.RPCID,
+		Code:  errors.WSErrorOK,
+		Error: errors.WSErrorToString[errors.WSErrorOK],
+	}
+	c.Notify(protocol.MT_EndPKResponse, res)
+	return
 }
 
 // WebSocket Server
@@ -301,6 +790,36 @@ func (s *WSServer) NotifyPlayer(id string, t string, v PMessage) error {
 	player.Notify(t, v)
 
 	return nil
+}
+
+// FindPlayer find player by ID
+func (s *WSServer) FindPlayer(id string) (c *WSClient, err error) {
+	s.cl.RLock()
+	defer s.cl.RUnlock()
+
+	player, ok := s.conns[id]
+	if !ok || !player.IsOnline() {
+		return nil, errors.NewWSError("player not online")
+	}
+	return player, nil
+}
+
+func (s *WSServer) generateRTCRoomToken(roomID string, userID string, permission string) string {
+	rtcClient := qiniurtc.NewManager(&qiniuauth.Credentials{
+		AccessKey: s.conf.RTC.KeyPair.AccessKey,
+		SecretKey: []byte(s.conf.RTC.KeyPair.SecretKey),
+	})
+	rtcRoomTokenTimeout := time.Duration(s.conf.RTC.RoomTokenExpireSecond) * time.Second
+	roomAccess := qiniurtc.RoomAccess{
+		AppID:    s.conf.RTC.AppID,
+		RoomName: roomID,
+		UserID:   userID,
+		ExpireAt: time.Now().Add(rtcRoomTokenTimeout).Unix(),
+		// Permission分admin/user，直播间创建者需要admin权限。
+		Permission: permission,
+	}
+	token, _ := rtcClient.GetRoomToken(roomAccess)
+	return token
 }
 
 // NewWSServer return a new websocket server

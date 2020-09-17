@@ -227,6 +227,7 @@ func (c *RoomController) UpdateRoom(xl *xlog.Logger, id string, newRoom *protoco
 	if newRoom.PlayURL != "" {
 		room.PlayURL = newRoom.PlayURL
 	}
+	room.PKAnchor = newRoom.PKAnchor
 	room.Audiences = newRoom.Audiences
 	err = c.roomColl.UpdateOne(context.Background(), bson.M{"_id": id}, bson.M{"$set": room})
 	if err != nil {

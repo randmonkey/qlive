@@ -121,7 +121,6 @@ github.com/qiniu/x v1.11.5/go.mod h1:03Ni9tj+N2h2aKnAz+6N0Xfl8FwMEDRC2PAlxekASDs
 github.com/rogpeppe/go-internal v1.1.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
 github.com/rogpeppe/go-internal v1.2.2/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
 github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
-github.com/rongcloud/server-sdk-go v2.0.1+incompatible h1:Haxx/Ca8fpSJyJGUH8c6EYcAvL55uwcgYO/2RhQFWHE=
 github.com/rongcloud/server-sdk-go/v3 v3.0.2 h1:yzjRjT6Vmf/DUYzRFL0BcgdLMFxcqkOYU6j8rNSjcmY=
 github.com/rongcloud/server-sdk-go/v3 v3.0.2/go.mod h1:66VvbVd06QNrFj73iGZYEZJo43273k3kuzHB3wDBH9M=
 github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726/go.mod h1:3yhqj7WBBfRhbBlzyOC3gUxftwsU0u8gqevxwIHQpMw=

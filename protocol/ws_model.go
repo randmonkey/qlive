@@ -16,6 +16,7 @@ const (
 	MT_AnswerPKResponse  = "answer-pk-res"
 	MT_PKOfferNotify     = "on-pk-offer"
 	MT_PKAnswerNotify    = "on-pk-answer"
+	MT_PKEndNotify       = "on-pk-end"
 )
 
 type Ping struct {
@@ -156,6 +157,7 @@ func (p *AnswerPKResponse) Unmarshal(b []byte) error {
 }
 
 type PKOfferNotify struct {
+	RPCID string `json:"rpcID,omitempty"`
 	// 发起PK的主播的用户ID
 	UserID string `json:"userID"`
 	// 发起PK的主播的用户昵称
@@ -175,6 +177,7 @@ func (p *PKOfferNotify) Unmarshal(b []byte) error {
 }
 
 type PKAnswerNotify struct {
+	RPCID string `json:"rpcID,omitempty"`
 	// PK 直播间 ID
 	PKRoomID string `json:"pkRoomID"`
 	// 是否接受 PK
@@ -190,5 +193,19 @@ func (p *PKAnswerNotify) Marshal() ([]byte, error) {
 }
 
 func (p *PKAnswerNotify) Unmarshal(b []byte) error {
+	return json.Unmarshal(b, p)
+}
+
+type PKEndNotify struct {
+	RPCID string `json:"rpcID,omitempty"`
+	// PK 直播间 ID
+	PKRoomID string `json:"pkRoomID"`
+}
+
+func (p *PKEndNotify) Marshal() ([]byte, error) {
+	return json.Marshal(p)
+}
+
+func (p *PKEndNotify) Unmarshal(b []byte) error {
 	return json.Unmarshal(b, p)
 }
