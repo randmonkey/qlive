@@ -30,7 +30,8 @@ type RoomHandler struct {
 
 // RoomInterface 处理房间相关API的接口。
 type RoomInterface interface {
-	CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) error
+	// 创建房间。当房间的创建者再次调用时，返回房间的当前状态。
+	CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) (*protocol.LiveRoom, error)
 	// ListAllRooms 列出全部正在直播的房间列表。
 	ListAllRooms(xl *xlog.Logger) ([]protocol.LiveRoom, error)
 	// ListPKRooms 列出可以与userID PK的房间列表。
@@ -41,6 +42,8 @@ type RoomInterface interface {
 	EnterRoom(xl *xlog.Logger, userID string, roomID string) (*protocol.LiveRoom, error)
 	// LeaveRoom 退出直播间。
 	LeaveRoom(xl *xlog.Logger, userID string, roomID string) error
+	// GetRoomByID 根据ID查找房间。
+	GetRoomByID(xl *xlog.Logger, roomID string) (*protocol.LiveRoom, error)
 }
 
 // ListRooms 列出房间请求。
@@ -141,9 +144,12 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 		Creator: userID,
 		PlayURL: h.generatePlayURL(roomID),
 		RTCRoom: roomID,
-		Status:  protocol.LiveRoomStatusSingle,
+		// avoid null values
+		Audiences: []string{},
+		Status:    protocol.LiveRoomStatusSingle,
 	}
-	err = h.Room.CreateRoom(xl, room)
+	// 若房间之前不存在，返回创建的房间。若房间已存在，返回已经存在的房间。
+	roomRes, err := h.Room.CreateRoom(xl, room)
 	if err != nil {
 		serverErr, ok := err.(*errors.ServerError)
 		if !ok {
@@ -168,15 +174,15 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 		}
 	}
 
-	xl.Infof("user %s created room: ID %s, name %s", userID, roomID, args.RoomName)
+	xl.Infof("user %s created room: ID %s, name %s", userID, roomRes.ID, args.RoomName)
 	host, _, err := net.SplitHostPort(c.Request.Host)
 	if err != nil {
 		xl.Errorf("failed to get split host and port in request.Host, error %v", err)
 	}
 	resp := &protocol.CreateRoomResponse{
-		RoomID:       roomID,
+		RoomID:       roomRes.ID,
 		RoomName:     args.RoomName,
-		RTCRoom:      roomID,
+		RTCRoom:      roomRes.ID,
 		RTCRoomToken: h.generateRTCRoomToken(roomID, userID, "admin"),
 		WSURL:        h.generateWSURL(host),
 	}
@@ -212,13 +218,21 @@ func (h *RoomHandler) generatePlayURL(roomID string) string {
 	return "rtmp://" + h.RTCConfig.PublishHost + "/" + h.RTCConfig.PublishHub + "/" + roomID
 }
 
+const (
+	// DefaultRTCRoomTokenTimeout 默认的RTC加入房间用token的过期时间。
+	DefaultRTCRoomTokenTimeout = 60 * time.Second
+)
+
 // 生成加入RTC房间的room token。
 func (h *RoomHandler) generateRTCRoomToken(roomID string, userID string, permission string) string {
 	rtcClient := qiniurtc.NewManager(&qiniuauth.Credentials{
 		AccessKey: h.RTCConfig.KeyPair.AccessKey,
 		SecretKey: []byte(h.RTCConfig.KeyPair.SecretKey),
 	})
-	rtcRoomTokenTimeout := 60 * time.Second
+	rtcRoomTokenTimeout := DefaultRTCRoomTokenTimeout
+	if h.RTCConfig.RoomTokenExpireSecond > 0 {
+		rtcRoomTokenTimeout = time.Duration(h.RTCConfig.RoomTokenExpireSecond) * time.Second
+	}
 	roomAccess := qiniurtc.RoomAccess{
 		AppID:    h.RTCConfig.AppID,
 		RoomName: roomID,
@@ -269,6 +283,60 @@ func (h *RoomHandler) CloseRoom(c *gin.Context) {
 	xl.Infof("user %s closed room: ID %s", userID, args.RoomID)
 
 	// return OK
+}
+
+// RefreshRoom 主播重新回到房间。
+func (h *RoomHandler) RefreshRoom(c *gin.Context) {
+	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
+	requestID := xl.ReqId
+	userID := c.GetString(protocol.UserIDContextKey)
+
+	args := protocol.RefreshRoomArgs{}
+	err := c.BindJSON(&args)
+	if err != nil {
+		xl.Infof("invalid args in body, error %v", err)
+		httpErr := errors.NewHTTPErrorBadRequest().WithRequestID(requestID).WithMessage("invalid args in request body")
+		c.JSON(http.StatusBadRequest, httpErr)
+		return
+	}
+	roomID := args.RoomID
+	room, err := h.Room.GetRoomByID(xl, roomID)
+	if err != nil {
+		serverErr, ok := err.(*errors.ServerError)
+		if !ok {
+			xl.Errorf("get room with ID %s failed, error %v", roomID, err)
+			httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
+			c.JSON(http.StatusInternalServerError, httpErr)
+			return
+		}
+		switch serverErr.Code {
+		case errors.ServerErrorRoomNotFound:
+			xl.Infof("room %s not found", roomID)
+			httpErr := errors.NewHTTPErrorNoSuchRoom().WithRequestID(requestID).WithMessagef("room %s not found", roomID)
+			c.JSON(http.StatusNotFound, httpErr)
+			return
+		default:
+			xl.Errorf("get room with ID %s failed, error %v", roomID, err)
+			httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
+			c.JSON(http.StatusInternalServerError, httpErr)
+			return
+		}
+	}
+	if room.Creator != userID {
+		xl.Infof("room %s is not created by user %s, cannot do refresh", roomID, userID)
+		httpErr := errors.NewHTTPErrorNoSuchRoom().WithRequestID(requestID).WithMessagef("room %s not found", roomID)
+		c.JSON(http.StatusNotFound, httpErr)
+		return
+	}
+
+	xl.Infof("user %s refresh room %s, generated new RTC room token", userID, roomID)
+	resp := &protocol.RefreshRoomResponse{
+		RoomID:       roomID,
+		RoomName:     room.Name,
+		RTCRoom:      roomID,
+		RTCRoomToken: h.generateRTCRoomToken(roomID, userID, "admin"),
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // EnterRoom 进入直播间。

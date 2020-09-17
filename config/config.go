@@ -50,6 +50,8 @@ type QiniuRTCConfig struct {
 	PublishHost string `json:"publish_host"`
 	// 合流转推的Hub名称。
 	PublishHub string `json:"publish_hub"`
+	// RTC room token的有效时间。
+	RoomTokenExpireSecond int `json:"room_token_expire_s"`
 }
 
 // RongCloudIMConfig 融云IM服务配置。
@@ -106,9 +108,10 @@ func NewSample() *Config {
 				AccessKey: os.Getenv("QINIU_ACCESS_KEY"),
 				SecretKey: os.Getenv("QINIU_SECRET_KEY"),
 			},
-			AppID:       os.Getenv("QINIU_RTC_APP_ID"),
-			PublishHost: "localhost:1935",
-			PublishHub:  "test",
+			AppID:                 os.Getenv("QINIU_RTC_APP_ID"),
+			PublishHost:           "localhost:1935",
+			PublishHub:            "test",
+			RoomTokenExpireSecond: 60,
 		},
 		IM: &IMConfig{
 			Provider: "test",
