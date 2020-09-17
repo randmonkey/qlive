@@ -160,6 +160,12 @@ func (c *WSClient) onAuthorize(ctx context.Context, m msgpump.Message) {
 	var req protocol.AuthorizeRequest
 	err := req.Unmarshal(m)
 	if err != nil {
+		res := &protocol.AuthorizeResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorUnknownMessage,
+			Error: errors.WSErrorToString[errors.WSErrorUnknownMessage],
+		}
+		c.Notify(protocol.MT_AuthorizeResponse, res)
 		return
 	}
 
@@ -190,6 +196,12 @@ func (c *WSClient) onStartPK(ctx context.Context, m msgpump.Message) {
 	var req protocol.StartPKRequest
 	err := req.Unmarshal(m)
 	if err != nil {
+		res := &protocol.StartPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorUnknownMessage,
+			Error: errors.WSErrorToString[errors.WSErrorUnknownMessage],
+		}
+		c.Notify(protocol.MT_StartResponse, res)
 		return
 	}
 	// TODO
@@ -200,6 +212,12 @@ func (c *WSClient) onEndPK(ctx context.Context, m msgpump.Message) {
 	var req protocol.EndPKRequest
 	err := req.Unmarshal(m)
 	if err != nil {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorUnknownMessage,
+			Error: errors.WSErrorToString[errors.WSErrorUnknownMessage],
+		}
+		c.Notify(protocol.MT_EndPKResponse, res)
 		return
 	}
 	// TODO
@@ -210,6 +228,12 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 	var req protocol.AnswerPKRequest
 	err := req.Unmarshal(m)
 	if err != nil {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorUnknownMessage,
+			Error: errors.WSErrorToString[errors.WSErrorUnknownMessage],
+		}
+		c.Notify(protocol.MT_AnswerPKResponse, res)
 		return
 	}
 	// TODO
