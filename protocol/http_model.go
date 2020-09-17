@@ -115,6 +115,8 @@ type CreateRoomResponse struct {
 	RTCRoom string `json:"rtcRoom"`
 	// RTCRoomToken 创建/加入RTC房间的token。
 	RTCRoomToken string `json:"rtcRoomToken"`
+	// WSURL websocket 信令连接的地址。
+	WSURL string `json:"wsURL"`
 	// IMUser TODO:IM聊天用户信息。
 	IMUser IMUserInfo `json:"imUser"`
 	// IMGroup TODO:IM聊天群组信息。

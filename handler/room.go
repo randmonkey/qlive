@@ -2,7 +2,9 @@ package handler
 
 import (
 	"math/rand"
+	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,6 +22,10 @@ type RoomHandler struct {
 	Account   AccountInterface
 	Room      RoomInterface
 	RTCConfig *config.QiniuRTCConfig
+	// websocket 协议，ws 或 wss
+	WSProtocol string
+	// websocket 监听端口
+	WSPort int
 }
 
 // RoomInterface 处理房间相关API的接口。
@@ -163,11 +169,16 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 	}
 
 	xl.Infof("user %s created room: ID %s, name %s", userID, roomID, args.RoomName)
+	host, _, err := net.SplitHostPort(c.Request.Host)
+	if err != nil {
+		xl.Errorf("failed to get split host and port in request.Host, error %v", err)
+	}
 	resp := &protocol.CreateRoomResponse{
 		RoomID:       roomID,
 		RoomName:     args.RoomName,
 		RTCRoom:      roomID,
 		RTCRoomToken: h.generateRTCRoomToken(roomID, userID, "admin"),
+		WSURL:        h.generateWSURL(host),
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -191,6 +202,10 @@ func (h *RoomHandler) generateRoomID() string {
 		roomID = roomID + string(alphaNum[index])
 	}
 	return roomID
+}
+
+func (h *RoomHandler) generateWSURL(host string) string {
+	return h.WSProtocol + "://" + host + ":" + strconv.Itoa(h.WSPort) + "/qlive"
 }
 
 func (h *RoomHandler) generatePlayURL(roomID string) string {
@@ -252,6 +267,7 @@ func (h *RoomHandler) CloseRoom(c *gin.Context) {
 		}
 	}
 	xl.Infof("user %s closed room: ID %s", userID, args.RoomID)
+
 	// return OK
 }
 
