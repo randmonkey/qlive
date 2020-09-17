@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/qiniu/x/xlog"
-	"github.com/someonegg/gox/syncx"
 	"github.com/someonegg/msgpump"
 	"go.uber.org/atomic"
 
@@ -30,129 +29,40 @@ type WSClient struct {
 	st time.Time
 	xl *xlog.Logger
 
-	playerID  string
-	closeNow  *atomic.Bool
-	online    *atomic.Bool
-	cleared   *atomic.Bool
-	cancel    chan struct{}
-	closeChan chan struct{}
-
-	authorized    *atomic.Bool
-	authorizeDone syncx.DoneChan
+	playerID      string
+	online        *atomic.Bool
+	authorizeDone chan struct{}
 
 	remoteAddr string
 
 	lastMessageTime time.Time
-
-	ppCancel chan struct{}
 }
 
+// Start start websocket client. Implement for github.com/qrtc/qlive/service/websocket Client
 func (c *WSClient) Start(p *msgpump.Pump) {
 	c.p = p
 	c.p.Start(c.s.QuitCtx())
 	go c.monitor()
 }
 
-func (c *WSClient) monitor() {
-	c.xl.Infof("monitor start")
-	defer c.ending()
-	to := time.Millisecond * time.Duration(c.s.conf.WsConf.AuthorizeTimeoutMS)
-	select {
-	case <-c.p.StopD():
-	case <-c.authorizeDone:
-	case <-time.After(to):
-		c.p.Stop()
-	}
-
-	select {
-	case <-c.p.StopD():
-	}
-
-	c.xl.Infof("monitor end: %v, closeNow: %v, cleared: %v, authorized: %v", c.playerID, c.closeNow.Load(), c.cleared.Load(), c.authorized.Load())
+// Process listen all requests. Implement for github.com/qrtc/qlive/service/websocket Client
+func (c *WSClient) Process(ctx context.Context, t string, m msgpump.Message) {
+	go func(ctx context.Context, t string, m msgpump.Message) {
+		c.parallelProcess(ctx, t, m)
+	}(ctx, t, m)
 }
 
-func (c *WSClient) ending() {
-	c.recover()
-
-	c.online.Store(false)
-
-	if c.p != nil {
-		c.p.Stop()
-	}
-
-	select {
-	case c.ppCancel <- struct{}{}:
-	default:
-	}
-
-	if c.cleared.Load() {
-		return
-	}
-
-	if !c.authorized.Load() {
-		return
-	}
-
-	if !c.closeNow.Load() {
-		c.xl.Errorf("waiting reconnect: %v", c.playerID)
-
-		timeout := time.Second * time.Duration(c.s.conf.WsConf.ReconnectTimeoutSecond)
-		select {
-		case <-c.cancel:
-			c.xl.Infof("reconnect succeed: %v", c.playerID)
-			return
-		case <-time.After(timeout):
-			c.xl.Infof("reconnect timeout: %v", c.playerID)
-			break
-		case <-c.closeChan:
-			c.xl.Infof("reconnect break: %v, closeNow: %v", c.playerID, c.closeNow.Load())
-			break
-		}
-	}
-
-	//Do some disconnect logic
-}
-
-func (c *WSClient) pingPong() {
-	ping := &protocol.Ping{}
-
-	for {
-		select {
-		case <-time.After(time.Second * time.Duration(c.s.conf.WsConf.PingTickerSecond)):
-			c.Notify(protocol.MT_Ping, ping)
-
-			now := time.Now()
-			if now.After(c.lastMessageTime.Add(time.Second * time.Duration(c.s.conf.WsConf.PongTimeoutSecond))) {
-				c.xl.Errorf("pingpong timeout: %v", c.playerID)
-				c.p.Stop()
-				return
-			}
-		case <-c.ppCancel:
-			return
-		}
-	}
-}
-
-// Online get client online status.
-func (c *WSClient) Online() bool {
+// IsOnline get client online status.
+func (c *WSClient) IsOnline() bool {
 	return c.online.Load()
 }
 
-// Cancel cancel ending function.
-func (c *WSClient) Cancel() {
-	select {
-	case c.cancel <- struct{}{}:
-	default:
-	}
-}
-
-// close stop client msgpump.
-func (c *WSClient) close() error {
-	c.closeNow.Store(true)
+// Close stop client msgpump.
+func (c *WSClient) Close() error {
+	c.online.Store(false)
 	if c.p != nil {
 		c.p.Stop()
 	}
-	c.closeChan <- struct{}{}
 	return nil
 }
 
@@ -161,12 +71,8 @@ func (c *WSClient) StartTime() time.Time {
 	return c.st
 }
 
-// notify write a notify to client.
+// Notify write a notify to client.
 func (c *WSClient) Notify(t string, v PMessage) {
-	if t == protocol.MT_Disconnect {
-		c.cleared.Store(true)
-	}
-
 	m, err := v.Marshal()
 	if err != nil {
 		return
@@ -179,16 +85,36 @@ func (c *WSClient) Notify(t string, v PMessage) {
 
 		if ok := c.p.TryOutput(t, m); !ok {
 			c.xl.Errorf("TryOutput failed %v", c.playerID)
-			c.close()
+			c.Close()
 		}
 	}
 }
 
-// Process listen all requests.
-func (c *WSClient) Process(ctx context.Context, t string, m msgpump.Message) {
-	go func(ctx context.Context, t string, m msgpump.Message) {
-		c.parallelProcess(ctx, t, m)
-	}(ctx, t, m)
+func (c *WSClient) monitor() {
+	select {
+	case <-c.p.StopD():
+	case <-time.After(time.Millisecond * time.Duration(c.s.conf.WsConf.AuthorizeTimeoutMS)):
+		c.Close()
+	case <-c.authorizeDone:
+		ping := &protocol.Ping{}
+		c.s.AddPlayer(c.playerID, c)
+		c.online.Store(true)
+		for {
+			select {
+			case <-c.p.StopD():
+				c.online.Store(false)
+				c.s.RemovePlayer(c.playerID)
+				break
+			case <-time.After(time.Second * time.Duration(c.s.conf.WsConf.PingTickerSecond)):
+				c.Notify(protocol.MT_Ping, ping)
+				if time.Now().Sub(c.lastMessageTime) > time.Second*time.Duration(c.s.conf.WsConf.PongTimeoutSecond) {
+					c.Close()
+					c.s.RemovePlayer(c.playerID)
+					break
+				}
+			}
+		}
+	}
 }
 
 func (c *WSClient) parallelProcess(ctx context.Context, t string, m msgpump.Message) {
@@ -198,7 +124,7 @@ func (c *WSClient) parallelProcess(ctx context.Context, t string, m msgpump.Mess
 		c.xl.Infof("message from %v, %v=%v", c.playerID, t, string(m))
 	}
 
-	if !c.authorized.Load() && t != protocol.MT_Authorize {
+	if !c.IsOnline() && t != protocol.MT_Authorize {
 		return
 	}
 
@@ -211,7 +137,7 @@ func (c *WSClient) parallelProcess(ctx context.Context, t string, m msgpump.Mess
 	case protocol.MT_Authorize:
 		c.onAuthorize(ctx, m)
 	case protocol.MT_Disconnect:
-		c.close()
+		c.Close()
 	default:
 		c.xl.Errorf("unknown message from %v, %v=%v", c.playerID, t, string(m))
 	}
@@ -227,13 +153,13 @@ func (c *WSClient) recover() {
 }
 
 func (c *WSClient) onAuthorize(ctx context.Context, m msgpump.Message) {
-	var req protocol.Authorize
+	var req protocol.AuthorizeRequest
 	err := req.Unmarshal(m)
 	if err != nil {
 		return
 	}
 
-	_, err = c.s.authCtl.GetIDByToken(c.xl, req.Token)
+	id, err := c.s.authCtl.GetIDByToken(c.xl, req.Token)
 	if err != nil {
 		res := &protocol.AuthorizeResponse{
 			RPCID: req.RPCID,
@@ -244,15 +170,15 @@ func (c *WSClient) onAuthorize(ctx context.Context, m msgpump.Message) {
 		return
 	}
 
-	c.authorized.Store(true)
-	c.authorizeDone.SetDone()
+	c.playerID = id
+	close(c.authorizeDone)
+
 	res := &protocol.AuthorizeResponse{
 		RPCID: req.RPCID,
 		Code:  errors.WSErrorOK,
 		Error: errors.WSErrorToString[errors.WSErrorOK],
 	}
 	c.Notify(protocol.MT_AuthorizeResponse, res)
-	go c.pingPong()
 	return
 }
 
@@ -262,7 +188,7 @@ type WSServer struct {
 	xl   *xlog.Logger
 
 	cl    sync.RWMutex
-	Conns map[string]*WSClient
+	conns map[string]*WSClient
 
 	accountCtl *controller.AccountController
 	authCtl    *controller.AuthController
@@ -271,29 +197,60 @@ type WSServer struct {
 	*websocket.Service
 }
 
+// CreateClient Implement for github.com/qrtc/qlive/service/websocket ClientCreator
 func (s *WSServer) CreateClient(r *http.Request, rAddr, rPort string) (websocket.Client, error) {
 
 	return &WSClient{
 		s:             s,
 		st:            time.Now(),
 		xl:            xlog.New(NewReqID()),
-		closeNow:      atomic.NewBool(false),
-		online:        atomic.NewBool(true),
-		cleared:       atomic.NewBool(false),
-		cancel:        make(chan struct{}, 1),
-		closeChan:     make(chan struct{}, 1),
-		authorized:    atomic.NewBool(false),
-		authorizeDone: syncx.NewDoneChan(),
+		online:        atomic.NewBool(false),
+		authorizeDone: make(chan struct{}),
 		remoteAddr:    rAddr,
-		ppCancel:      make(chan struct{}, 1),
 	}, nil
 }
 
+// AddPlayer add player on player list
+func (s *WSServer) AddPlayer(id string, c *WSClient) error {
+	s.cl.Lock()
+	defer s.cl.Unlock()
+
+	s.conns[id] = c
+	return nil
+}
+
+// RemovePlayer remove player from player list
+func (s *WSServer) RemovePlayer(id string) error {
+	s.cl.Lock()
+	defer s.cl.Unlock()
+
+	if _, ok := s.conns[id]; !ok {
+		return errors.NewWSError("player not online")
+	}
+	delete(s.conns, id)
+	return nil
+}
+
+// NotifyPlayer send player notify message
+func (s *WSServer) NotifyPlayer(id string, t string, v PMessage) error {
+	s.cl.RLock()
+	defer s.cl.RUnlock()
+
+	player, ok := s.conns[id]
+	if !ok || !player.IsOnline() {
+		return errors.NewWSError("player not online")
+	}
+	player.Notify(t, v)
+
+	return nil
+}
+
+// NewWSServer return a new websocket server
 func NewWSServer(conf *config.Config) (s *WSServer, err error) {
 	s = &WSServer{
 		conf:  *conf,
 		xl:    xlog.New(NewReqID()),
-		Conns: make(map[string]*WSClient),
+		conns: make(map[string]*WSClient),
 	}
 
 	s.accountCtl, err = controller.NewAccountController(conf.Mongo.URI, conf.Mongo.Database, nil)
