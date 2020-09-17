@@ -63,6 +63,14 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		WSProtocol: "ws",
 	}
 
+	imController, err := controller.NewIMController(conf.IM, nil)
+	if err != nil {
+		return nil, err
+	}
+	imHandler := &handler.IMHandler{
+		IMService: imController,
+	}
+
 	v1 := router.Group("/v1")
 	{
 		// 账号相关API。
@@ -81,6 +89,8 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 
 		// 观众端/主播端API：获取全部房间或者PK房间。
 		v1.GET("rooms", addRequestID, authHandler.Authenticate, roomHandler.ListRooms)
+		// IM API：生成IM token。
+		v1.POST("im_user_token", addRequestID, authHandler.Authenticate, imHandler.GetUserToken)
 	}
 	router.NoRoute(addRequestID, returnNotFound)
 	return router, nil

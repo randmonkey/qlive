@@ -9,6 +9,7 @@ require (
 	github.com/qiniu/api.v7/v7 v7.6.0
 	github.com/qiniu/qmgo v0.7.0
 	github.com/qiniu/x v1.11.5
+	github.com/rongcloud/server-sdk-go/v3 v3.0.2
 	github.com/someonegg/gox v1.0.0
 	github.com/someonegg/msgpump v1.0.0
 	github.com/stretchr/testify v1.4.0

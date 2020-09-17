@@ -47,8 +47,12 @@ const (
 	// UserStatusPKPending 用户已发起PK请求,正在等待响应
 )
 
-// IMUserInfo 对应IM 用户信息。TODO：根据对接的IM厂商，填充此结构体。
-type IMUserInfo struct{}
+// IMUser 对应IM 用户信息。
+type IMUser struct {
+	UserID   string `json:"id"`
+	Username string `json:"name"`
+	Token    string `json:"token"`
+}
 
 // ActiveUser 已登录用户的信息。
 type ActiveUser struct {
@@ -61,7 +65,7 @@ type ActiveUser struct {
 	// Room 所在直播间。PK连麦直播中，发起PK一方主播的所在直播间为其PK对手主播的直播间。
 	Room string `json:"room,omitempty" bson:"room,omitempty"`
 	// IMUser 关联IM用户信息。
-	IMUser IMUserInfo `json:"imUser" bson:"imUser"`
+	IMUser IMUser `json:"imUser" bson:"imUser"`
 }
 
 // SMSCodeRecord 已发送的验证码记录。
@@ -104,5 +108,5 @@ type LiveRoom struct {
 	// Audiences 观众ID列表。
 	Audiences []string `json:"audiences" bson:"audiences"`
 	// IMGroup 该直播间关联聊天群组。
-	IMGroup string `json:"imGroup" bson:"imGroup"`
+	IMChatRoom string `json:"imGroup" bson:"imGroup"`
 }

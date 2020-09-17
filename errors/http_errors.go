@@ -35,6 +35,7 @@ const (
 	HTTPErrorSMSSendTooFrequent = 429001
 	HTTPErrorTooManyRooms       = 503001
 	HTTPErrorInternal           = 500000
+	HTTPErrorExternalService    = 502001
 )
 
 // WithMessage 为HTTP错误添加详细消息。
@@ -188,5 +189,13 @@ func NewHTTPErrorInternal() *HTTPError {
 	return &HTTPError{
 		Code:    HTTPErrorInternal,
 		Summary: "internal server error",
+	}
+}
+
+// NewHTTPErrorExternalService 调用外部服务错误。
+func NewHTTPErrorExternalService() *HTTPError {
+	return &HTTPError{
+		Code:    HTTPErrorExternalService,
+		Summary: "calling external service failed",
 	}
 }

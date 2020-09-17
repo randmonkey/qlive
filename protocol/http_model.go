@@ -73,8 +73,8 @@ type EnterRoomRequest struct {
 	RoomID string `json:"roomID"`
 }
 
-//IMGroupInfo  TODO: IM聊天群组信息。
-type IMGroupInfo struct{}
+//IMChatRoom  IM聊天室信息。
+type IMChatRoom struct{}
 
 // EnterRoomResponse 进入房间返回结果。
 type EnterRoomResponse struct {
@@ -89,10 +89,10 @@ type EnterRoomResponse struct {
 	Status string `json:"status"`
 	// PKStreamerID 若正在PK，返回PK主播的信息。未在PK时该字段为空。
 	PKStreamerID *UserInfo `json:"pkStreamer,omitempty"`
-	// IMUser TODO:IM聊天用户信息。
-	IMUser IMUserInfo `json:"imUser"`
-	// IMGroup TODO:IM聊天群组信息。
-	IMGroup IMGroupInfo `json:"imGroup"`
+	// IMUser IM聊天用户信息。
+	IMUser IMUser `json:"imUser"`
+	// IMGroup IM聊天室信息。
+	IMChatRoom IMChatRoom `json:"imGroup"`
 }
 
 // LeaveRoomArgs 离开房间的请求。
@@ -117,14 +117,20 @@ type CreateRoomResponse struct {
 	RTCRoomToken string `json:"rtcRoomToken"`
 	// WSURL websocket 信令连接的地址。
 	WSURL string `json:"wsURL"`
-	// IMUser TODO:IM聊天用户信息。
-	IMUser IMUserInfo `json:"imUser"`
-	// IMGroup TODO:IM聊天群组信息。
-	IMGroup IMGroupInfo `json:"imGroup"`
+	// IMUser
+	IMUser IMUser `json:"imUser"`
+	// IMGroup
+	IMChatRoom IMChatRoom `json:"imChatRoom"`
 }
 
 // CloseRoomArgs 关闭直播间参数。
 type CloseRoomArgs struct {
 	UserID string `json:"userID"`
 	RoomID string `json:"roomID"`
+}
+
+// IMTokenResponse 获取IM token的回应。
+type IMTokenResponse struct {
+	UserID string `json:"userID"`
+	Token  string `json:"token"`
 }
