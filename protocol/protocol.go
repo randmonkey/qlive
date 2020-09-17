@@ -61,7 +61,7 @@ type GetRoomResponse struct {
 	// 房间状态，单人直播中/PK中。
 	Status string `json:"status"`
 	// PKStreamer 若房间PK中，返回PK主播的信息。
-	PKStreamer *UserInfo `json:"pkStreamer"`
+	PKStreamer *UserInfo `json:"pkStreamer,omitempty"`
 }
 
 // ListRoomsResponse 列出房间的返回结果。

@@ -60,10 +60,17 @@ func (h *RoomHandler) ListCanPKRooms(c *gin.Context) {
 	}
 	resp := &protocol.ListRoomsResponse{}
 	for _, room := range rooms {
-		resp.Rooms = append(resp.Rooms, protocol.GetRoomResponse{
+		getRoomResp := protocol.GetRoomResponse{
 			ID:   room.ID,
 			Name: room.Name,
-		})
+			Creator: protocol.UserInfo{
+				ID: room.Creator,
+			},
+			PlayURL:   room.PlayURL,
+			Audiences: room.Audiences,
+			Status:    string(room.Status),
+		}
+		resp.Rooms = append(resp.Rooms, getRoomResp)
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -80,10 +87,22 @@ func (h *RoomHandler) ListAllRooms(c *gin.Context) {
 	}
 	resp := &protocol.ListRoomsResponse{}
 	for _, room := range rooms {
-		resp.Rooms = append(resp.Rooms, protocol.GetRoomResponse{
+		getRoomResp := protocol.GetRoomResponse{
 			ID:   room.ID,
 			Name: room.Name,
-		})
+			Creator: protocol.UserInfo{
+				ID: room.Creator,
+			},
+			PlayURL:   room.PlayURL,
+			Audiences: room.Audiences,
+			Status:    string(room.Status),
+		}
+		if room.Status == protocol.LiveRoomStatusPK {
+			getRoomResp.PKStreamer = &protocol.UserInfo{
+				ID: room.PKStreamer,
+			}
+		}
+		resp.Rooms = append(resp.Rooms, getRoomResp)
 	}
 	c.JSON(http.StatusOK, resp)
 }
