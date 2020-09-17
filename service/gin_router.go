@@ -1,7 +1,10 @@
 package service
 
 import (
+	"fmt"
+	"net"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/qiniu/x/xlog"
@@ -44,10 +47,20 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 	if err != nil {
 		return nil, err
 	}
+	_, wsPortStr, err := net.SplitHostPort(conf.WsConf.ListenAddr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid websocket listen address, failed to parse: %v", err)
+	}
+	wsPort, err := strconv.Atoi(wsPortStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid websocket listen port, failed to parse: %v", err)
+	}
 	roomHandler := &handler.RoomHandler{
-		Account:   accountController,
-		Room:      roomController,
-		RTCConfig: conf.RTC,
+		Account:    accountController,
+		Room:       roomController,
+		RTCConfig:  conf.RTC,
+		WSPort:     wsPort,
+		WSProtocol: "ws",
 	}
 
 	v1 := router.Group("/v1")
