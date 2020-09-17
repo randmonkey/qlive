@@ -9,4 +9,6 @@ const (
 	SMSCodeCollection = "sms_code"
 	// RoomsCollection 存储直播房间信息的表。
 	RoomsCollection = "rooms"
+	// AudienceCollection (TODO)存储直播间观看者信息的表。
+	AudienceCollection = "audiences"
 )

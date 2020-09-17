@@ -262,7 +262,18 @@ func (c *RoomController) EnterRoom(xl *xlog.Logger, userID string, roomID string
 	// TODO:查看用户状态，是否已经进入其他房间。
 
 	// 更新房间观众列表。
-	room.Audiences = append(room.Audiences, userID)
+	found := false
+	for _, audience := range room.Audiences {
+		if audience == userID {
+			found = true
+			xl.Infof("user %s already in room %s", userID, roomID)
+			break
+		}
+	}
+	if !found {
+		room.Audiences = append(room.Audiences, userID)
+	}
+
 	updatedRoom, err := c.UpdateRoom(xl, room.ID, room)
 	if err != nil {
 		xl.Infof("error when updating room %v", err)
@@ -297,15 +308,18 @@ func (c *RoomController) LeaveRoom(xl *xlog.Logger, userID string, roomID string
 
 	//查看用户是否在当前房间，若在当前房间，从观众列表中移除此用户。
 	found := false
-	for index, audience := range room.Audiences {
+	audiences := []string{}
+	for _, audience := range room.Audiences {
 		if audience == userID {
-			room.Audiences = append(room.Audiences[:index], room.Audiences[index+1:]...)
 			found = true
+		} else {
+			audiences = append(audiences, audience)
 		}
 	}
 	if !found {
 		xl.Errorf("user %s not found in room %s", userID, roomID)
 	}
+	room.Audiences = audiences
 
 	_, err = c.UpdateRoom(xl, room.ID, room)
 	if err != nil {
