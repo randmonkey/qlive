@@ -69,11 +69,19 @@ func (h *RoomHandler) ListCanPKRooms(c *gin.Context) {
 	}
 	resp := &protocol.ListRoomsResponse{}
 	for _, room := range rooms {
+		creatorInfo, err := h.Account.GetAccountByID(xl, room.Creator)
+		if err != nil {
+			xl.Errorf("failed to get account info for user %s, creator of room %s", room.Creator, room.ID)
+			// TODO：创建者用户信息获取失败，是否要算这个房间? 现在是跳过该房间，不显示
+			continue
+		}
 		getRoomResp := protocol.GetRoomResponse{
 			ID:   room.ID,
 			Name: room.Name,
 			Creator: protocol.UserInfo{
-				ID: room.Creator,
+				ID:       room.Creator,
+				Nickname: creatorInfo.Nickname,
+				Gender:   creatorInfo.Gender,
 			},
 			PlayURL:   room.PlayURL,
 			Audiences: room.Audiences,
@@ -96,11 +104,19 @@ func (h *RoomHandler) ListAllRooms(c *gin.Context) {
 	}
 	resp := &protocol.ListRoomsResponse{}
 	for _, room := range rooms {
+		creatorInfo, err := h.Account.GetAccountByID(xl, room.Creator)
+		if err != nil {
+			xl.Errorf("failed to get account info for user %s, creator of room %s", room.Creator, room.ID)
+			// TODO：创建者用户信息获取失败，是否要算这个房间? 现在是跳过该房间，不显示
+			continue
+		}
 		getRoomResp := protocol.GetRoomResponse{
 			ID:   room.ID,
 			Name: room.Name,
 			Creator: protocol.UserInfo{
-				ID: room.Creator,
+				ID:       room.Creator,
+				Nickname: creatorInfo.Nickname,
+				Gender:   creatorInfo.Gender,
 			},
 			PlayURL:   room.PlayURL,
 			Audiences: room.Audiences,
@@ -167,6 +183,10 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 			httpErr := errors.NewHTTPErrorTooManyRooms().WithRequestID(requestID)
 			c.JSON(http.StatusServiceUnavailable, httpErr)
 			return
+		case errors.ServerErrorCanOnlyCreateOneRoom:
+			httpErr := errors.NewHTTPErrorCanOnlyCreateOneRoom().WithRequestID(requestID)
+			c.JSON(http.StatusForbidden, httpErr)
+			return
 		default:
 			httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
 			c.JSON(http.StatusInternalServerError, httpErr)
@@ -174,7 +194,7 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 		}
 	}
 
-	xl.Infof("user %s created room: ID %s, name %s", userID, roomRes.ID, args.RoomName)
+	xl.Infof("user %s created or refreshed room: ID %s, name %s", userID, roomRes.ID, args.RoomName)
 	host, _, err := net.SplitHostPort(c.Request.Host)
 	if err != nil {
 		xl.Errorf("failed to get split host and port in request.Host, error %v", err)
@@ -281,7 +301,7 @@ func (h *RoomHandler) CloseRoom(c *gin.Context) {
 		}
 	}
 	xl.Infof("user %s closed room: ID %s", userID, args.RoomID)
-
+	c.JSON(http.StatusOK, "")
 	// return OK
 }
 
@@ -428,5 +448,6 @@ func (h *RoomHandler) LeaveRoom(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, httpErr)
 	}
 
+	c.JSON(http.StatusOK, "")
 	return
 }

@@ -19,23 +19,24 @@ type HTTPError struct {
 
 // HTTPError 系列，规定HTTP请求出错时的错误码。
 const (
-	HTTPErrorBadRequest         = 400000
-	HTTPErrorInvalidPhoneNumber = 400001
-	HTTPErrorInvalidRoomName    = 400004
-	HTTPErrorBadLoginType       = 400005
-	HTTPErrorUnauthorized       = 401000
-	HTTPErrorNotLoggedIn        = 401001
-	HTTPErrorWrongSMSCode       = 401002
-	HTTPErrorBadToken           = 401003
-	HTTPErrorAlreadyLoggedIn    = 401004
-	HTTPErrorNotFound           = 404000
-	HTTPErrorNoSuchUser         = 404001
-	HTTPErrorNoSuchRoom         = 404002
-	HTTPErrorRoomNameUsed       = 409002
-	HTTPErrorSMSSendTooFrequent = 429001
-	HTTPErrorTooManyRooms       = 503001
-	HTTPErrorInternal           = 500000
-	HTTPErrorExternalService    = 502001
+	HTTPErrorBadRequest           = 400000
+	HTTPErrorInvalidPhoneNumber   = 400001
+	HTTPErrorInvalidRoomName      = 400004
+	HTTPErrorBadLoginType         = 400005
+	HTTPErrorUnauthorized         = 401000
+	HTTPErrorNotLoggedIn          = 401001
+	HTTPErrorWrongSMSCode         = 401002
+	HTTPErrorBadToken             = 401003
+	HTTPErrorAlreadyLoggedIn      = 401004
+	HTTPErrorCanOnlyCreateOneRoom = 403003
+	HTTPErrorNotFound             = 404000
+	HTTPErrorNoSuchUser           = 404001
+	HTTPErrorNoSuchRoom           = 404002
+	HTTPErrorRoomNameUsed         = 409002
+	HTTPErrorSMSSendTooFrequent   = 429001
+	HTTPErrorTooManyRooms         = 503001
+	HTTPErrorInternal             = 500000
+	HTTPErrorExternalService      = 502001
 )
 
 // WithMessage 为HTTP错误添加详细消息。
@@ -133,6 +134,14 @@ func NewHTTPErrorAlreadyLoggedin() *HTTPError {
 	return &HTTPError{
 		Code:    HTTPErrorAlreadyLoggedIn,
 		Summary: "already logged in",
+	}
+}
+
+// NewHTTPErrorCanOnlyCreateOneRoom 一个用户只能创建一个直播间。
+func NewHTTPErrorCanOnlyCreateOneRoom() *HTTPError {
+	return &HTTPError{
+		Code:    HTTPErrorCanOnlyCreateOneRoom,
+		Summary: "can only create one room",
 	}
 }
 
