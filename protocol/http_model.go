@@ -121,36 +121,8 @@ type CreateRoomResponse struct {
 	IMGroup IMGroupInfo `json:"imGroup"`
 }
 
-// StartPKArgs 开启PK请求参数。
-type StartPKArgs struct {
-	UserID string `json:"userID"`
-	RoomID string `json:"roomID"`
-	// PKRoomID 发起PK的目标直播间。
-	PKRoomID string `json:"pkRoomID"`
-	// TODO：添加PK时的自定义消息？
-}
-
-// ReplyPKArgs 回复PK请求参数。
-type ReplyPKArgs struct {
-	UserID string `json:"userID"`
-	RoomID string `json:"roomID"`
-	// PKRoomID 发起PK请求的直播间ID。
-	PKRoomID string `json:"pkRoomID"`
-	// 是否接受PK
-	Accept bool `json:"accept"`
-	// TODO：添加回应PK时的自定义消息？
-}
-
 // CloseRoomArgs 关闭直播间参数。
 type CloseRoomArgs struct {
 	UserID string `json:"userID"`
 	RoomID string `json:"roomID"`
-}
-
-// EndPKArgs 结束PK参数。
-type EndPKArgs struct {
-	UserID string `json:"userID"`
-	RoomID string `json:"roomID"`
-	// PKRoomID PK中的直播间ID。
-	PKRoomID string `json:"pkRoomID"`
 }

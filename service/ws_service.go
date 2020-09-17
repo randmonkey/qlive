@@ -124,7 +124,7 @@ func (c *WSClient) parallelProcess(ctx context.Context, t string, m msgpump.Mess
 		c.xl.Infof("message from %v, %v=%v", c.playerID, t, string(m))
 	}
 
-	if !c.IsOnline() && t != protocol.MT_Authorize {
+	if !c.IsOnline() && t != protocol.MT_AuthorizeRequest {
 		return
 	}
 
@@ -134,10 +134,14 @@ func (c *WSClient) parallelProcess(ctx context.Context, t string, m msgpump.Mess
 	case protocol.MT_Ping:
 		c.Notify(protocol.MT_Pong, &protocol.Pong{})
 	case protocol.MT_Pong:
-	case protocol.MT_Authorize:
+	case protocol.MT_AuthorizeRequest:
 		c.onAuthorize(ctx, m)
-	case protocol.MT_Disconnect:
-		c.Close()
+	case protocol.MT_StartPKRequest:
+		c.onStartPK(ctx, m)
+	case protocol.MT_EndPKRequest:
+		c.onEndPK(ctx, m)
+	case protocol.MT_AnswerPKRequest:
+		c.onAnswerPK(ctx, m)
 	default:
 		c.xl.Errorf("unknown message from %v, %v=%v", c.playerID, t, string(m))
 	}
@@ -180,6 +184,36 @@ func (c *WSClient) onAuthorize(ctx context.Context, m msgpump.Message) {
 	}
 	c.Notify(protocol.MT_AuthorizeResponse, res)
 	return
+}
+
+func (c *WSClient) onStartPK(ctx context.Context, m msgpump.Message) {
+	var req protocol.StartPKRequest
+	err := req.Unmarshal(m)
+	if err != nil {
+		return
+	}
+	// TODO
+	// A 向 B 发起 PK，发送 offer-notify 给 B
+}
+
+func (c *WSClient) onEndPK(ctx context.Context, m msgpump.Message) {
+	var req protocol.EndPKRequest
+	err := req.Unmarshal(m)
+	if err != nil {
+		return
+	}
+	// TODO
+	// A 结束 PK
+}
+
+func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
+	var req protocol.AnswerPKRequest
+	err := req.Unmarshal(m)
+	if err != nil {
+		return
+	}
+	// TODO
+	// B 应答 A 发起的 PK，发送 answer-notify 给 A
 }
 
 // WebSocket Server
