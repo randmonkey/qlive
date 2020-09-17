@@ -81,9 +81,23 @@ func (c *RoomController) CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) (*
 			xl.Infof("room name %s is already used", room.Name)
 			return nil, &errors.ServerError{Code: errors.ServerErrorRoomNameUsed}
 		}
+		// 如果是该用户创建的直播间，返回直播间的现有信息。
 		return &existingRoom, nil
 	}
-	// TODO:限制一个用户只能开一个直播间？
+
+	// 无同名房间，查看该用户是否已经创建过直播间。
+	creatorID := room.Creator
+	n, err = c.roomColl.Find(context.Background(), bson.M{"creator": creatorID}).Count()
+	if err != nil {
+		if !qmgo.IsErrNoDocuments(err) {
+			xl.Errorf("failed to count rooms created by %s, error %v", creatorID, err)
+			return nil, &errors.ServerError{Code: errors.ServerErrorMongoOpFail}
+		}
+	}
+	if n > 0 {
+		xl.Infof("user %s has created at least one room, cannot create room", creatorID)
+		return nil, &errors.ServerError{Code: errors.ServerErrorCanOnlyCreateOneRoom}
+	}
 
 	_, err = c.roomColl.InsertOne(context.Background(), room)
 	if err != nil {
@@ -91,7 +105,7 @@ func (c *RoomController) CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) (*
 		return nil, err
 	}
 	// 修改创建者状态为单人直播中。
-	creatorID := room.Creator
+
 	activeUser := protocol.ActiveUser{}
 	err = c.activeUserColl.Find(context.Background(), bson.M{"_id": creatorID}).One(&activeUser)
 	if err != nil {
