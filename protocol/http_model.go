@@ -129,6 +129,21 @@ type CloseRoomArgs struct {
 	RoomID string `json:"roomID"`
 }
 
+// RefreshRoomArgs 主播返回直播间（例如断线重连，PK结束等）
+type RefreshRoomArgs struct {
+	RoomID string `json:"roomID"`
+}
+
+// RefreshRoomResponse 主播返回直播间的返回结果，包含新的RTC token。
+type RefreshRoomResponse struct {
+	RoomID   string `json:"roomID"`
+	RoomName string `json:"roomName"`
+	// RTCRoom 对应的RTC房间。
+	RTCRoom string `json:"rtcRoom"`
+	// RTCRoomToken 创建/加入RTC房间的token。
+	RTCRoomToken string `json:"rtcRoomToken"`
+}
+
 // IMTokenResponse 获取IM token的回应。
 type IMTokenResponse struct {
 	UserID string `json:"userID"`

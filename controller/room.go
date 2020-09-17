@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 
 	"go.mongodb.org/mongo-driver/bson"
 
@@ -53,7 +52,7 @@ func NewRoomController(mongoURI string, database string, xl *xlog.Logger) (*Room
 }
 
 // CreateRoom 创建直播房间
-func (c *RoomController) CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) error {
+func (c *RoomController) CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) (*protocol.LiveRoom, error) {
 	if xl == nil {
 		xl = c.xl
 	}
@@ -62,30 +61,34 @@ func (c *RoomController) CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) er
 	n, err := c.roomColl.Find(context.Background(), bson.M{}).Count()
 	if err != nil {
 		xl.Errorf("failed to get total room number, error %v", err)
-		return &errors.ServerError{Code: errors.ServerErrorMongoOpFail}
+		return nil, &errors.ServerError{Code: errors.ServerErrorMongoOpFail}
 	}
 	if n >= int64(c.roomNumberLimit) {
 		xl.Warnf("room number limit exceeded, current %d, max %d", n, c.roomNumberLimit)
-		return &errors.ServerError{Code: errors.ServerErrorTooManyRooms}
+		return nil, &errors.ServerError{Code: errors.ServerErrorTooManyRooms}
 	}
 
 	// 查看是否已有同名房间。
-	err = c.roomColl.Find(context.Background(), bson.M{"name": room.Name}).One(&protocol.LiveRoom{})
+	existingRoom := protocol.LiveRoom{}
+	err = c.roomColl.Find(context.Background(), bson.M{"name": room.Name}).One(&existingRoom)
 	if err != nil {
 		if !qmgo.IsErrNoDocuments(err) {
 			xl.Errorf("failed to find room with name %s, error %v", room.Name, err)
-			return &errors.ServerError{Code: errors.ServerErrorMongoOpFail}
+			return nil, &errors.ServerError{Code: errors.ServerErrorMongoOpFail}
 		}
 	} else {
-		xl.Infof("room name %s is already used", room.Name)
-		return &errors.ServerError{Code: errors.ServerErrorRoomNameUsed}
+		if existingRoom.Creator != room.Creator {
+			xl.Infof("room name %s is already used", room.Name)
+			return nil, &errors.ServerError{Code: errors.ServerErrorRoomNameUsed}
+		}
+		return &existingRoom, nil
 	}
 	// TODO:限制一个用户只能开一个直播间？
 
 	_, err = c.roomColl.InsertOne(context.Background(), room)
 	if err != nil {
 		xl.Errorf("failed to insert room, error %v", err)
-		return err
+		return nil, err
 	}
 	// 修改创建者状态为单人直播中。
 	creatorID := room.Creator
@@ -93,7 +96,7 @@ func (c *RoomController) CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) er
 	err = c.activeUserColl.Find(context.Background(), bson.M{"_id": creatorID}).One(&activeUser)
 	if err != nil {
 		xl.Errorf("failed to find creator %s in active users, error %v", creatorID, err)
-		return err
+		return nil, err
 	}
 	activeUser.Status = protocol.UserStatusSingleLive
 	activeUser.Room = room.ID
@@ -101,7 +104,7 @@ func (c *RoomController) CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) er
 	if err != nil {
 		xl.Errorf("failed to update user status of room creator %s", creatorID)
 	}
-	return nil
+	return room, nil
 }
 
 // CloseRoom 关闭直播房间
@@ -167,7 +170,7 @@ func (c *RoomController) GetRoomByFields(xl *xlog.Logger, fields map[string]inte
 	if err != nil {
 		if qmgo.IsErrNoDocuments(err) {
 			xl.Infof("no such room for fields %v", fields)
-			return nil, fmt.Errorf("not found")
+			return nil, &errors.ServerError{Code: errors.ServerErrorRoomNotFound}
 		}
 		xl.Errorf("failed to get room, error %v", fields)
 		return nil, err

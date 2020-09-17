@@ -82,7 +82,8 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		// 主播端API：创建、关闭房间。
 		v1.POST("rooms", addRequestID, authHandler.Authenticate, roomHandler.CreateRoom)
 		v1.POST("close_room", addRequestID, authHandler.Authenticate, roomHandler.CloseRoom)
-
+		// 主播端API：重新进入房间，刷新RTC room token。
+		v1.POST("refresh_room", addRequestID, authHandler.Authenticate, roomHandler.RefreshRoom)
 		// 观众端API：进入、退出房间。
 		v1.POST("enter_room", addRequestID, authHandler.Authenticate, roomHandler.EnterRoom)
 		v1.POST("leave_room", addRequestID, authHandler.Authenticate, roomHandler.LeaveRoom)
