@@ -7,6 +7,6 @@ const (
 	ActiveUserCollection = "active_users"
 	// SMSCodeCollection 存储已发送的短信验证码的表。
 	SMSCodeCollection = "sms_code"
-	// RoomsCollectionn 存储直播房间信息的表。
+	// RoomsCollection 存储直播房间信息的表。
 	RoomsCollection = "rooms"
 )

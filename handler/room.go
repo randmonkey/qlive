@@ -332,8 +332,8 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 		Creator:      creatorInfo,
 		Status:       string(updatedRoom.Status),
 		PKStreamerID: pkStreamerInfo,
-		IMUser:       protocol.IMUserInfo{},
-		IMGroup:      protocol.IMGroupInfo{},
+		IMUser:       protocol.IMUser{},
+		IMChatRoom:   protocol.IMChatRoom{},
 	}
 
 	c.JSON(http.StatusOK, ret)

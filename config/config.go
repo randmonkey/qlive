@@ -52,6 +52,18 @@ type QiniuRTCConfig struct {
 	PublishHub string `json:"publish_hub"`
 }
 
+// RongCloudIMConfig 融云IM服务配置。
+type RongCloudIMConfig struct {
+	AppKey    string `json:"app_key"`
+	AppSecret string `json:"app_secret"`
+}
+
+// IMConfig IM服务配置。
+type IMConfig struct {
+	Provider  string             `json:"provider"`
+	RongCloud *RongCloudIMConfig `json:"rongcloud"`
+}
+
 // Config 后端配置。
 type Config struct {
 	// debug等级，为1时输出info/warn/error日志，为0除以上外还输出debug日志
@@ -62,6 +74,7 @@ type Config struct {
 	Mongo  *MongoConfig    `json:"mongo"`
 	SMS    *SMSConfig      `json:"sms"`
 	RTC    *QiniuRTCConfig `json:"rtc"`
+	IM     *IMConfig       `json:"im"`
 }
 
 // NewSample 返回样例配置。
@@ -96,6 +109,13 @@ func NewSample() *Config {
 			AppID:       os.Getenv("QINIU_RTC_APP_ID"),
 			PublishHost: "localhost:1935",
 			PublishHub:  "test",
+		},
+		IM: &IMConfig{
+			Provider: "test",
+			RongCloud: &RongCloudIMConfig{
+				AppKey:    os.Getenv("RONGCLOUD_APP_KEY"),
+				AppSecret: os.Getenv("RONGCLOUD_APP_SECRET"),
+			},
 		},
 	}
 }
