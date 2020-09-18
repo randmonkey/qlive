@@ -34,8 +34,8 @@ type RoomInterface interface {
 	CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) (*protocol.LiveRoom, error)
 	// ListAllRooms 列出全部正在直播的房间列表。
 	ListAllRooms(xl *xlog.Logger) ([]protocol.LiveRoom, error)
-	// ListPKRooms 列出可以与userID PK的房间列表。
-	ListPKRooms(xl *xlog.Logger, userID string) ([]protocol.LiveRoom, error)
+	// ListRoomsByFields 根据特定条件列出房间。
+	ListRoomsByFields(xl *xlog.Logger, fields map[string]interface{}) ([]protocol.LiveRoom, error)
 	// CloseRoom 关闭直播间。
 	CloseRoom(xl *xlog.Logger, userID string, roomID string) error
 	// EnterRoom 进入直播间。
@@ -54,6 +54,10 @@ func (h *RoomHandler) ListRooms(c *gin.Context) {
 		h.ListCanPKRooms(c)
 		return
 	}
+	if c.Query("creator") != "" {
+		h.ListRoomsByCreator(c)
+		return
+	}
 
 	h.ListAllRooms(c)
 }
@@ -61,11 +65,15 @@ func (h *RoomHandler) ListRooms(c *gin.Context) {
 // ListCanPKRooms 列出当前主播可以PK的房间列表。
 func (h *RoomHandler) ListCanPKRooms(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
+	requestID := xl.ReqId
 	userID := c.GetString(protocol.UserIDContextKey)
-	rooms, err := h.Room.ListPKRooms(xl, userID)
+	rooms, err := h.Room.ListRoomsByFields(xl, map[string]interface{}{
+		"status":  protocol.LiveRoomStatusSingle,
+		"creator": map[string]interface{}{"$ne": userID},
+	})
 	if err != nil {
 		xl.Errorf("failed to list rooms which can be PKed, error %v", err)
-		httpErr := errors.NewHTTPErrorInternal()
+		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
 		c.JSON(http.StatusInternalServerError, httpErr)
 		return
 	}
@@ -92,6 +100,48 @@ func (h *RoomHandler) ListCanPKRooms(c *gin.Context) {
 		resp.Rooms = append(resp.Rooms, getRoomResp)
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// ListRoomsByCreator 根据创建者的ID列出房间。
+func (h *RoomHandler) ListRoomsByCreator(c *gin.Context) {
+	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
+	requestID := xl.ReqId
+
+	creatorID := c.Query("creator")
+
+	rooms, err := h.Room.ListRoomsByFields(xl, map[string]interface{}{
+		"creator": creatorID,
+	})
+	if err != nil {
+		xl.Errorf("failed to list rooms created by %s, error %v", creatorID, err)
+		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
+		c.JSON(http.StatusInternalServerError, httpErr)
+		return
+	}
+	resp := &protocol.ListRoomsResponse{}
+	creatorInfo, err := h.Account.GetAccountByID(xl, creatorID)
+	if err != nil {
+		xl.Errorf("failed to get account info of creator %s, error %v", creatorID, err)
+		// TODO:获取创建者账号信息失败是否应当直接返回错误？
+		creatorInfo = &protocol.Account{ID: creatorID}
+	}
+	for _, room := range rooms {
+		getRoomResp := protocol.GetRoomResponse{
+			ID:   room.ID,
+			Name: room.Name,
+			Creator: protocol.UserInfo{
+				ID:       room.Creator,
+				Nickname: creatorInfo.Nickname,
+				Gender:   creatorInfo.Gender,
+			},
+			PlayURL:        room.PlayURL,
+			AudienceNumber: len(room.Audiences),
+			Status:         string(room.Status),
+		}
+		resp.Rooms = append(resp.Rooms, getRoomResp)
+	}
+	c.JSON(http.StatusOK, resp)
+
 }
 
 // ListAllRooms 列出全部房间。
