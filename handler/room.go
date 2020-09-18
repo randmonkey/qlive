@@ -123,8 +123,8 @@ func (h *RoomHandler) ListAllRooms(c *gin.Context) {
 			Status:    string(room.Status),
 		}
 		if room.Status == protocol.LiveRoomStatusPK {
-			getRoomResp.PKStreamer = &protocol.UserInfo{
-				ID: room.PKStreamer,
+			getRoomResp.PKAnchor = &protocol.UserInfo{
+				ID: room.PKAnchor,
 			}
 		}
 		resp.Rooms = append(resp.Rooms, getRoomResp)
@@ -396,32 +396,32 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 		Gender:   creator.Gender,
 	}
 
-	// 获取PKstreamer的userInfo
-	pkStreamerInfo := &protocol.UserInfo{}
+	// 获取pkAnchor的userInfo
+	pkAnchorInfo := &protocol.UserInfo{}
 	if updatedRoom.Status == protocol.LiveRoomStatusPK {
-		pkStreamer, err := h.Account.GetAccountByID(xl, updatedRoom.PKStreamer)
+		pkAnchor, err := h.Account.GetAccountByID(xl, updatedRoom.PKAnchor)
 		if err != nil {
-			xl.Errorf("pkStreamer %v is not found", pkStreamer)
+			xl.Errorf("pkAnchor %v is not found", pkAnchor)
 			httpErr := errors.NewHTTPErrorNoSuchUser().WithRequestID(requestID)
 			c.JSON(http.StatusInternalServerError, httpErr)
 			return
 		}
-		pkStreamerInfo = &protocol.UserInfo{
-			ID:       pkStreamer.ID,
-			Nickname: pkStreamer.Nickname,
-			Gender:   pkStreamer.Gender,
+		pkAnchorInfo = &protocol.UserInfo{
+			ID:       pkAnchor.ID,
+			Nickname: pkAnchor.Nickname,
+			Gender:   pkAnchor.Gender,
 		}
 	}
 
 	ret = &protocol.EnterRoomResponse{
-		RoomID:       updatedRoom.ID,
-		RoomName:     updatedRoom.Name,
-		PlayURL:      updatedRoom.PlayURL,
-		Creator:      creatorInfo,
-		Status:       string(updatedRoom.Status),
-		PKStreamerID: pkStreamerInfo,
-		IMUser:       protocol.IMUser{},
-		IMChatRoom:   protocol.IMChatRoom{},
+		RoomID:     updatedRoom.ID,
+		RoomName:   updatedRoom.Name,
+		PlayURL:    updatedRoom.PlayURL,
+		Creator:    creatorInfo,
+		Status:     string(updatedRoom.Status),
+		PKAnchorID: pkAnchorInfo,
+		IMUser:     protocol.IMUser{},
+		IMChatRoom: protocol.IMChatRoom{},
 	}
 
 	c.JSON(http.StatusOK, ret)

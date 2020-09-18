@@ -125,6 +125,56 @@ func (c *AccountController) UpdateAccount(xl *xlog.Logger, id string, newAccount
 	return account, nil
 }
 
+// GetActiveUserByFields 根据一组key/value关系查找活跃用户信息。
+func (c *AccountController) GetActiveUserByFields(xl *xlog.Logger, fields map[string]interface{}) (*protocol.ActiveUser, error) {
+	if xl == nil {
+		xl = c.xl
+	}
+	activeUser := protocol.ActiveUser{}
+	err := c.activeUserColl.Find(context.Background(), fields).One(&activeUser)
+	if err != nil {
+		if qmgo.IsErrNoDocuments(err) {
+			xl.Infof("no such active user for fields %v", fields)
+			return nil, fmt.Errorf("not found")
+		}
+		xl.Errorf("failed to get active user, error %v", fields)
+		return nil, err
+	}
+	return &activeUser, nil
+}
+
+// GetAccountByID 使用ID查找活跃用户信息。
+func (c *AccountController) GetActiveUserByID(xl *xlog.Logger, id string) (*protocol.ActiveUser, error) {
+	return c.GetActiveUserByFields(xl, bson.M{"_id": id})
+}
+
+// UpdateActiveUser 更新活跃用户的状态信息
+func (c *AccountController) UpdateActiveUser(xl *xlog.Logger, userID string, newActiveUser *protocol.ActiveUser) (*protocol.ActiveUser, error) {
+	if xl == nil {
+		xl = c.xl
+	}
+	activeUserRecord := &protocol.ActiveUser{}
+	err := c.activeUserColl.Find(context.Background(), bson.M{"_id": userID}).
+		One(activeUserRecord)
+	if err != nil {
+		c.xl.Errorf("UpdateActiveUser: failed to find account %s", userID)
+		return nil, err
+	}
+
+	if newActiveUser.Status != "" {
+		activeUserRecord.Status = newActiveUser.Status
+	}
+	if newActiveUser.Room != "" {
+		activeUserRecord.Room = newActiveUser.Room
+	}
+	err = c.activeUserColl.UpdateOne(context.Background(), bson.M{"_id": userID}, bson.M{"$set": activeUserRecord})
+	if err != nil {
+		xl.Errorf("failed to update active user status record, error %v", err)
+		return nil, err
+	}
+	return activeUserRecord, nil
+}
+
 // AccountLogin 设置某个账号为已登录状态。
 func (c *AccountController) AccountLogin(xl *xlog.Logger, userID string) (token string, err error) {
 	if xl == nil {

@@ -45,6 +45,7 @@ const (
 	// UserStatusPKLive 用户正在PK连麦直播。
 	UserStatusPKLive UserStatus = "pkLive"
 	// UserStatusPKPending 用户已发起PK请求,正在等待响应
+	UserStatusPKWait UserStatus = "pkWait"
 )
 
 // IMUser 对应IM 用户信息。
@@ -103,8 +104,8 @@ type LiveRoom struct {
 	RTCRoom string `json:"rtcRoom" bson:"rtcRoom"`
 	// Status 该直播间的当前状态。(单人直播中、PK中、等待PK)
 	Status LiveRoomStatus `json:"status" bson:"status"`
-	// PKStreamer 正在该直播间参与PK的另一主播的ID。
-	PKStreamer string `json:"pkStreamer,omitempty" bson:"pkStreamer,omitempty"`
+	// PKAnchor 正在该直播间参与PK的另一主播的ID。
+	PKAnchor string `json:"pkAnchor,omitempty" bson:"pkAnchor,omitempty"`
 	// Audiences 观众ID列表。
 	Audiences []string `json:"audiences" bson:"audiences"`
 	// IMGroup 该直播间关联聊天群组。
