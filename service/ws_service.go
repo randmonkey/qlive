@@ -94,9 +94,10 @@ func (c *WSClient) monitor() {
 	case <-time.After(time.Millisecond * time.Duration(c.s.conf.WsConf.AuthorizeTimeoutMS)):
 		c.Close()
 	case <-c.authorizeDone:
-		ping := &protocol.Ping{}
 		c.s.AddPlayer(c.playerID, c)
 		c.online.Store(true)
+		ping := &protocol.Ping{}
+		c.Notify(protocol.MT_Ping, ping)
 		for {
 			select {
 			case <-c.p.StopD():
