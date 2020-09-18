@@ -617,7 +617,7 @@ func (c *WSClient) onEndPK(ctx context.Context, m msgpump.Message) {
 		return
 	}
 
-	otherRoom, err := c.s.roomCtl.GetRoomByFields(c.xl, map[string]interface{}{"creater": pkRoom.PKAnchor})
+	otherRoom, err := c.s.roomCtl.GetRoomByFields(c.xl, map[string]interface{}{"creator": pkRoom.PKAnchor})
 	if err != nil {
 		res := &protocol.EndPKResponse{
 			RPCID: req.RPCID,
