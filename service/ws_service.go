@@ -77,16 +77,15 @@ func (c *WSClient) Notify(t string, v PMessage) {
 		return
 	}
 
-	if c.online.Load() {
-		if t != protocol.MT_Ping && t != protocol.MT_Pong {
-			c.xl.Infof("message to %v, %v=%v", c.playerID, t, string(m))
-		}
-
-		if ok := c.p.TryOutput(t, m); !ok {
-			c.xl.Errorf("TryOutput failed %v", c.playerID)
-			c.Close()
-		}
+	if t != protocol.MT_Ping && t != protocol.MT_Pong {
+		c.xl.Infof("message to %v, %v=%v", c.playerID, t, string(m))
 	}
+
+	if ok := c.p.TryOutput(t, m); !ok {
+		c.xl.Errorf("TryOutput failed %v", c.playerID)
+		c.Close()
+	}
+
 }
 
 func (c *WSClient) monitor() {
