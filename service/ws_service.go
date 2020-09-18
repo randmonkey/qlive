@@ -107,6 +107,7 @@ func (c *WSClient) monitor() {
 			case <-time.After(time.Second * time.Duration(c.s.conf.WsConf.PingTickerSecond)):
 				c.Notify(protocol.MT_Ping, ping)
 				if time.Now().Sub(c.lastMessageTime) > time.Second*time.Duration(c.s.conf.WsConf.PongTimeoutSecond) {
+					c.xl.Infof("%v pingpong timeout", c.playerID)
 					c.Close()
 					c.s.RemovePlayer(c.playerID)
 					break
