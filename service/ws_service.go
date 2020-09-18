@@ -437,11 +437,11 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 	}
 
 	if req.Accept {
-		if selfRoom.Status != protocol.LiveRoomStatusSingle {
+		if selfRoom.Status != protocol.LiveRoomStatusWaitPK {
 			res := &protocol.AnswerPKResponse{
 				RPCID: req.RPCID,
-				Code:  errors.WSErrorRoomInPK,
-				Error: errors.WSErrorToString[errors.WSErrorRoomInPK],
+				Code:  errors.WSErrorRoomNotInPK,
+				Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
 			}
 			c.Notify(protocol.MT_AnswerPKResponse, res)
 			return

@@ -14,6 +14,10 @@ import (
 	"github.com/someonegg/msgpump"
 )
 
+const (
+	defaultWriteQueue = 100
+)
+
 type Client interface {
 	// Client should start the pump with Service.QuitCtx.
 	Start(*msgpump.Pump)
@@ -53,6 +57,9 @@ func NewService(conf *Config, creator ClientCreator) *Service {
 
 	s.creator = creator
 	s.pumpWriteQueue = conf.PumpWriteQueue
+	if s.pumpWriteQueue == 0 {
+		s.pumpWriteQueue = defaultWriteQueue
+	}
 
 	s.upgrader.ReadBufferSize = conf.ReadBufferSize
 	s.upgrader.WriteBufferSize = conf.WriteBufferSize
