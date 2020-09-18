@@ -44,6 +44,8 @@ type RoomInterface interface {
 	LeaveRoom(xl *xlog.Logger, userID string, roomID string) error
 	// GetRoomByID 根据ID查找房间。
 	GetRoomByID(xl *xlog.Logger, roomID string) (*protocol.LiveRoom, error)
+	// UpdateRoom 更新房间信息。
+	UpdateRoom(xl *xlog.Logger, id string, room *protocol.LiveRoom) (*protocol.LiveRoom, error)
 }
 
 // ListRooms 列出房间请求。
@@ -83,9 +85,9 @@ func (h *RoomHandler) ListCanPKRooms(c *gin.Context) {
 				Nickname: creatorInfo.Nickname,
 				Gender:   creatorInfo.Gender,
 			},
-			PlayURL:   room.PlayURL,
-			Audiences: room.Audiences,
-			Status:    string(room.Status),
+			PlayURL:        room.PlayURL,
+			AudienceNumber: len(room.Audiences),
+			Status:         string(room.Status),
 		}
 		resp.Rooms = append(resp.Rooms, getRoomResp)
 	}
@@ -118,9 +120,9 @@ func (h *RoomHandler) ListAllRooms(c *gin.Context) {
 				Nickname: creatorInfo.Nickname,
 				Gender:   creatorInfo.Gender,
 			},
-			PlayURL:   room.PlayURL,
-			Audiences: room.Audiences,
-			Status:    string(room.Status),
+			PlayURL:        room.PlayURL,
+			AudienceNumber: len(room.Audiences),
+			Status:         string(room.Status),
 		}
 		if room.Status == protocol.LiveRoomStatusPK {
 			getRoomResp.PKAnchor = &protocol.UserInfo{
@@ -265,6 +267,89 @@ func (h *RoomHandler) generateRTCRoomToken(roomID string, userID string, permiss
 	return token
 }
 
+// UpdateRoom 更新直播间信息。
+func (h *RoomHandler) UpdateRoom(c *gin.Context) {
+	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
+	requestID := xl.ReqId
+	userID := c.GetString(protocol.UserIDContextKey)
+	roomID := c.Param("roomID")
+	args := protocol.UpdateRoomArgs{}
+	err := c.BindJSON(&args)
+	if err != nil {
+		xl.Infof("invalid args in body, error %v", err)
+		httpErr := errors.NewHTTPErrorBadRequest().WithRequestID(requestID).WithMessage("invalid args in request body")
+		c.JSON(http.StatusBadRequest, httpErr)
+		return
+	}
+	if !h.validateRoomName(args.RoomName) {
+		xl.Infof("invalid room name %s", args.RoomName)
+		httpErr := errors.NewHTTPErrorInvalidRoomName().WithRequestID(requestID).WithMessagef("invalid room name %s", args.RoomName)
+		c.JSON(http.StatusBadRequest, httpErr)
+		return
+	}
+
+	room, err := h.Room.GetRoomByID(xl, roomID)
+	if err != nil {
+		serverErr, ok := err.(*errors.ServerError)
+		if !ok {
+			xl.Errorf("failed to get current room %s, error %v", roomID, err)
+			httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
+			c.JSON(http.StatusInternalServerError, httpErr)
+			return
+		}
+		switch serverErr.Code {
+		case errors.ServerErrorRoomNotFound:
+			xl.Infof("room %s not found", roomID)
+			httpErr := errors.NewHTTPErrorNoSuchRoom().WithRequestID(requestID)
+			c.JSON(http.StatusNotFound, httpErr)
+			return
+		default:
+			xl.Errorf("failed to get current room %s, error %v", roomID, err)
+			httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
+			c.JSON(http.StatusInternalServerError, httpErr)
+			return
+		}
+	}
+
+	if room.Creator != userID {
+		xl.Infof("user %s try to update room %s, no permission", userID, roomID)
+		httpErr := errors.NewHTTPErrorNoSuchRoom().WithRequestID(requestID)
+		c.JSON(http.StatusNotFound, httpErr)
+		return
+	}
+
+	needUpdate := false
+	if args.RoomName != room.Name {
+		room.Name = args.RoomName
+		needUpdate = true
+	}
+	if needUpdate {
+		room, err = h.Room.UpdateRoom(xl, room.ID, room)
+		if err != nil {
+			serverErr, ok := err.(*errors.ServerError)
+			if ok {
+				switch serverErr.Code {
+				case errors.ServerErrorRoomNameUsed:
+					xl.Infof("room name %s used", args.RoomName)
+					httpErr := errors.NewHTTPErrorRoomNameused().WithRequestID(requestID)
+					c.JSON(http.StatusConflict, httpErr)
+					return
+				}
+			}
+			xl.Errorf("failed to update room, error %v", err)
+			httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
+			c.JSON(http.StatusInternalServerError, httpErr)
+			return
+		}
+	}
+	resp := &protocol.UpdateRoomResponse{
+		RoomID:   room.ID,
+		RoomName: room.Name,
+	}
+	xl.Infof("room %s updated by user %s", roomID, userID)
+	c.JSON(http.StatusOK, resp)
+}
+
 // CloseRoom 关闭直播间。
 func (h *RoomHandler) CloseRoom(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
@@ -350,11 +435,17 @@ func (h *RoomHandler) RefreshRoom(c *gin.Context) {
 	}
 
 	xl.Infof("user %s refresh room %s, generated new RTC room token", userID, roomID)
+
+	host, _, err := net.SplitHostPort(c.Request.Host)
+	if err != nil {
+		xl.Errorf("failed to get split host and port in request.Host, error %v", err)
+	}
 	resp := &protocol.RefreshRoomResponse{
 		RoomID:       roomID,
 		RoomName:     room.Name,
 		RTCRoom:      roomID,
 		RTCRoomToken: h.generateRTCRoomToken(roomID, userID, "admin"),
+		WSURL:        h.generateWSURL(host),
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -363,6 +454,7 @@ func (h *RoomHandler) RefreshRoom(c *gin.Context) {
 func (h *RoomHandler) EnterRoom(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
 	requestID := xl.ReqId
+	userID := c.GetString(protocol.UserIDContextKey)
 
 	args := &protocol.EnterRoomRequest{}
 	bindErr := c.BindJSON(&args)
@@ -373,7 +465,7 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 		return
 	}
 
-	updatedRoom, err := h.Room.EnterRoom(xl, args.UserID, args.RoomID)
+	updatedRoom, err := h.Room.EnterRoom(xl, userID, args.RoomID)
 	if err != nil {
 		xl.Errorf("enter room failed, enter room request: %v, error: %v", args, err)
 		httpErr := errors.NewHTTPErrorNoSuchRoom().WithRequestID(requestID)
@@ -431,6 +523,7 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 func (h *RoomHandler) LeaveRoom(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
 	requestID := xl.ReqId
+	userID := c.GetString(protocol.UserIDContextKey)
 
 	args := &protocol.LeaveRoomArgs{}
 	bindErr := c.BindJSON(&args)
@@ -441,7 +534,7 @@ func (h *RoomHandler) LeaveRoom(c *gin.Context) {
 		return
 	}
 
-	err := h.Room.LeaveRoom(xl, args.UserID, args.RoomID)
+	err := h.Room.LeaveRoom(xl, userID, args.RoomID)
 	if err != nil {
 		xl.Infof("error when leaving room, error: %v", err)
 		httpErr := errors.NewHTTPErrorBadRequest().WithRequestID(requestID)

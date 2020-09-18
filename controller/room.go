@@ -232,6 +232,21 @@ func (c *RoomController) UpdateRoom(xl *xlog.Logger, id string, newRoom *protoco
 	if err != nil {
 		return nil, err
 	}
+	// 需要修改房间名称的情况，先校验是否有同名不同ID的房间。
+	if newRoom.Name != "" && newRoom.Name != room.Name {
+		_, err = c.GetRoomByFields(xl, bson.M{"_id": bson.M{"$ne": newRoom.Name}, "name": newRoom.Name})
+		if err != nil {
+			serverErr, ok := err.(*errors.ServerError)
+			if !ok || serverErr.Code != errors.ServerErrorRoomNotFound {
+				xl.Errorf("failed to get rooms with name %s, error %v", id, err)
+				return nil, &errors.ServerError{Code: errors.ServerErrorMongoOpFail}
+			}
+		} else {
+			xl.Infof("room name %s is used by another rooms", newRoom.Name)
+			return nil, &errors.ServerError{Code: errors.ServerErrorRoomNameUsed}
+		}
+		room.Name = newRoom.Name
+	}
 	if newRoom.Status != room.Status {
 		room.Status = newRoom.Status
 	}
@@ -260,7 +275,6 @@ func (c *RoomController) EnterRoom(xl *xlog.Logger, userID string, roomID string
 	if err != nil {
 		return nil, err
 	}
-	// TODO:查看用户状态，是否已经进入其他房间。
 
 	// 更新房间观众列表。
 	found := false
