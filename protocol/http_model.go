@@ -54,8 +54,8 @@ type GetRoomResponse struct {
 	// TODO：添加创建者的昵称/性别等信息？
 	// WatchURL 观看地址
 	PlayURL string `json:"playURL"`
-	// TODO：添加观众详情？or只返回一个观众人数
-	Audiences []string `json:"audiences"`
+	// 只返回观众人数
+	AudienceNumber int `json:"audienceNumber"`
 	// 房间状态，单人直播中/PK中。
 	Status string `json:"status"`
 	// PKAnchor 若房间PK中，返回PK主播的信息。
@@ -129,6 +129,17 @@ type CloseRoomArgs struct {
 	RoomID string `json:"roomID"`
 }
 
+// UpdateRoomArgs 更新房间信息参数。
+type UpdateRoomArgs struct {
+	RoomName string `json:"roomName"`
+}
+
+// UpdateRoomResponse 更新房间信息返回结果。
+type UpdateRoomResponse struct {
+	RoomID   string `json:"roomID"`
+	RoomName string `json:"roomName"`
+}
+
 // RefreshRoomArgs 主播返回直播间（例如断线重连，PK结束等）
 type RefreshRoomArgs struct {
 	RoomID string `json:"roomID"`
@@ -142,6 +153,8 @@ type RefreshRoomResponse struct {
 	RTCRoom string `json:"rtcRoom"`
 	// RTCRoomToken 创建/加入RTC房间的token。
 	RTCRoomToken string `json:"rtcRoomToken"`
+	// WSURL websocket 服务器地址。
+	WSURL string `json:"wsURL"`
 }
 
 // IMTokenResponse 获取IM token的回应。
