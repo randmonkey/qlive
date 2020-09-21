@@ -34,6 +34,7 @@ type WSClient struct {
 	online          *atomic.Bool
 	authorizeDone   chan struct{}
 	remoteAddr      string
+	remotePort      string
 	lastMessageTime time.Time
 }
 
@@ -89,11 +90,17 @@ func (c *WSClient) Notify(t string, v PMessage) {
 }
 
 func (c *WSClient) monitor() {
+	c.xl.Infof("%v:%v connected.", c.remoteAddr, c.remotePort)
+
 	select {
 	case <-c.p.StopD():
+		c.xl.Infof("%v:%v disconnected.", c.remoteAddr, c.remotePort)
 	case <-time.After(time.Millisecond * time.Duration(c.s.conf.WsConf.AuthorizeTimeoutMS)):
+		c.xl.Infof("%v:%v authentication failure", c.remoteAddr, c.remotePort)
 		c.Close()
+		c.xl.Infof("%v:%v disconnected.", c.remoteAddr, c.remotePort)
 	case <-c.authorizeDone:
+		c.xl.Infof("%v:%v authorized successful as %v", c.remoteAddr, c.remotePort, c.playerID)
 		c.s.AddPlayer(c.playerID, c)
 		c.online.Store(true)
 		ping := &protocol.Ping{}
@@ -103,14 +110,16 @@ func (c *WSClient) monitor() {
 			case <-c.p.StopD():
 				c.online.Store(false)
 				c.s.RemovePlayer(c.playerID)
-				break
+				c.xl.Infof("%v:%v %v disconnected.", c.remoteAddr, c.remotePort, c.playerID)
+				return
 			case <-time.After(time.Second * time.Duration(c.s.conf.WsConf.PingTickerSecond)):
 				c.Notify(protocol.MT_Ping, ping)
 				if time.Now().Sub(c.lastMessageTime) > time.Second*time.Duration(c.s.conf.WsConf.PongTimeoutSecond) {
 					c.xl.Infof("%v pingpong timeout", c.playerID)
 					c.Close()
 					c.s.RemovePlayer(c.playerID)
-					break
+					c.xl.Infof("%v:%v %v disconnected.", c.remoteAddr, c.remotePort, c.playerID)
+					return
 				}
 			}
 		}
@@ -755,6 +764,7 @@ func (s *WSServer) CreateClient(r *http.Request, rAddr, rPort string) (websocket
 		online:        atomic.NewBool(false),
 		authorizeDone: make(chan struct{}),
 		remoteAddr:    rAddr,
+		remotePort:    rPort,
 	}, nil
 }
 
