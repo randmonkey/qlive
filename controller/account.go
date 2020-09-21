@@ -143,7 +143,7 @@ func (c *AccountController) GetActiveUserByFields(xl *xlog.Logger, fields map[st
 	return &activeUser, nil
 }
 
-// GetAccountByID 使用ID查找活跃用户信息。
+// GetActiveUserByID 使用ID查找活跃用户信息。
 func (c *AccountController) GetActiveUserByID(xl *xlog.Logger, id string) (*protocol.ActiveUser, error) {
 	return c.GetActiveUserByFields(xl, bson.M{"_id": id})
 }

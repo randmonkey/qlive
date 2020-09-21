@@ -24,6 +24,8 @@ const (
 	ServerErrorRoomNameUsed         = 10006
 	ServerErrorTooManyRooms         = 10007
 	ServerErrorCanOnlyCreateOneRoom = 10008
+	ServerErrorUserBroadcasting     = 10009
+	ServerErrorUserWatching         = 10010
 	ServerErrorSMSSendTooFrequent   = 10011
 	ServerErrorMongoOpFail          = 11000
 	// 2开头表示外部服务错误。

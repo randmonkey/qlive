@@ -99,19 +99,24 @@ func (c *RoomController) CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) (*
 		return nil, &errors.ServerError{Code: errors.ServerErrorCanOnlyCreateOneRoom}
 	}
 
-	_, err = c.roomColl.InsertOne(context.Background(), room)
-	if err != nil {
-		xl.Errorf("failed to insert room, error %v", err)
-		return nil, err
-	}
-	// 修改创建者状态为单人直播中。
-
 	activeUser := protocol.ActiveUser{}
 	err = c.activeUserColl.Find(context.Background(), bson.M{"_id": creatorID}).One(&activeUser)
 	if err != nil {
 		xl.Errorf("failed to find creator %s in active users, error %v", creatorID, err)
 		return nil, err
 	}
+	// 查看该用户是否观看直播中。
+	if activeUser.Status == protocol.UserStatusWatching {
+		xl.Infof("user %s is watching in other room %s, cannot create room", creatorID, activeUser.Room)
+		return nil, &errors.ServerError{Code: errors.ServerErrorUserWatching}
+	}
+	// 在mongo创建新的条目，记录直播间信息。
+	_, err = c.roomColl.InsertOne(context.Background(), room)
+	if err != nil {
+		xl.Errorf("failed to insert room, error %v", err)
+		return nil, err
+	}
+	// 修改创建者状态为单人直播中。
 	activeUser.Status = protocol.UserStatusSingleLive
 	activeUser.Room = room.ID
 	err = c.activeUserColl.UpdateOne(context.Background(), bson.M{"_id": creatorID}, bson.M{"$set": &activeUser})
@@ -142,34 +147,10 @@ func (c *RoomController) CloseRoom(xl *xlog.Logger, userID string, roomID string
 		xl.Errorf("failed to remove room ID %s, error %v", roomID, err)
 		return err
 	}
-	// 修改创建者状态为空闲。
-	activeUser := protocol.ActiveUser{}
-	err = c.activeUserColl.Find(context.Background(), bson.M{"_id": userID}).One(&activeUser)
+	// 修改创建者及所有观众状态为空闲，所在房间为空。
+	_, err = c.activeUserColl.UpdateAll(context.Background(), bson.M{"room": roomID}, bson.M{"$set": bson.M{"room": "", "status": protocol.UserStatusIdle}})
 	if err != nil {
-		xl.Errorf("failed to find creator %s in active users, error %v", userID, err)
-		return err
-	}
-	activeUser.Status = protocol.UserStatusIdle
-	activeUser.Room = ""
-	err = c.activeUserColl.UpdateOne(context.Background(), bson.M{"_id": userID}, bson.M{"$set": &activeUser})
-	if err != nil {
-		xl.Errorf("failed to update user status of room creator %s", userID)
-	}
-	// 修改所有观众状态为空闲。
-	for _, audienceID := range room.Audiences {
-		activeUser := protocol.ActiveUser{}
-		err = c.activeUserColl.Find(context.Background(), bson.M{"_id": audienceID}).One(&activeUser)
-		if err != nil {
-			xl.Errorf("failed to find audience %s in active users, error %v", audienceID, err)
-			continue
-		} else {
-			activeUser.Status = protocol.UserStatusIdle
-			activeUser.Room = ""
-			err = c.activeUserColl.UpdateOne(context.Background(), bson.M{"_id": audienceID}, bson.M{"$set": &activeUser})
-			if err != nil {
-				xl.Errorf("failed to update status of audience %s in active users, error %v", audienceID, err)
-			}
-		}
+		xl.Errorf("failed to update status of users in room %s, error %v", roomID, err)
 	}
 	return nil
 }
@@ -257,7 +238,6 @@ func (c *RoomController) UpdateRoom(xl *xlog.Logger, id string, newRoom *protoco
 		room.PlayURL = newRoom.PlayURL
 	}
 	room.PKAnchor = newRoom.PKAnchor
-	room.Audiences = newRoom.Audiences
 	err = c.roomColl.UpdateOne(context.Background(), bson.M{"_id": id}, bson.M{"$set": room})
 	if err != nil {
 		xl.Errorf("failed to update room %s,error %v", id, err)
@@ -276,31 +256,18 @@ func (c *RoomController) EnterRoom(xl *xlog.Logger, userID string, roomID string
 		return nil, err
 	}
 
-	// 更新房间观众列表。
-	found := false
-	for _, audience := range room.Audiences {
-		if audience == userID {
-			found = true
-			xl.Infof("user %s already in room %s", userID, roomID)
-			break
-		}
-	}
-	if !found {
-		room.Audiences = append(room.Audiences, userID)
-	}
-
-	updatedRoom, err := c.UpdateRoom(xl, room.ID, room)
-	if err != nil {
-		xl.Infof("error when updating room %v", err)
-		return nil, err
-	}
-	// 修改用户状态为观看中。
 	activeUser := protocol.ActiveUser{}
 	err = c.activeUserColl.Find(context.Background(), bson.M{"_id": userID}).One(&activeUser)
 	if err != nil {
 		xl.Errorf("failed to find user %s in active users, error %v", userID, err)
 		return nil, err
 	}
+	// 若用户状态为直播中（单人直播/PK直播/等待PK），不能进入房间观看直播。
+	if activeUser.Status == protocol.UserStatusSingleLive || activeUser.Status == protocol.UserStatusPKLive || activeUser.Status == protocol.UserStatusPKWait {
+		xl.Infof("user %s is live broadcasting in room %s, cannot enter room as audience", activeUser.ID, activeUser.Room)
+		return nil, &errors.ServerError{Code: errors.ServerErrorUserBroadcasting}
+	}
+
 	activeUser.Status = protocol.UserStatusWatching
 	activeUser.Room = roomID
 	err = c.activeUserColl.UpdateOne(context.Background(), bson.M{"_id": userID}, bson.M{"$set": &activeUser})
@@ -308,7 +275,7 @@ func (c *RoomController) EnterRoom(xl *xlog.Logger, userID string, roomID string
 		xl.Errorf("failed to update user status of user %s, error %v", userID, err)
 		return nil, err
 	}
-	return updatedRoom, nil
+	return room, nil
 }
 
 // ListRoomsByFields 根据字段列出房间。
@@ -333,30 +300,13 @@ func (c *RoomController) LeaveRoom(xl *xlog.Logger, userID string, roomID string
 	if xl == nil {
 		xl = c.xl
 	}
-	room, err := c.GetRoomByID(xl, roomID)
+	_, err := c.GetRoomByID(xl, roomID)
 	if err != nil {
-		return err
-	}
-
-	//查看用户是否在当前房间，若在当前房间，从观众列表中移除此用户。
-	found := false
-	audiences := []string{}
-	for _, audience := range room.Audiences {
-		if audience == userID {
-			found = true
-		} else {
-			audiences = append(audiences, audience)
+		// TODO: 这里直接返回错误？
+		if qmgo.IsErrNoDocuments(err) {
+			xl.Infof("room %s not found", roomID)
 		}
-	}
-	if !found {
-		xl.Errorf("user %s not found in room %s", userID, roomID)
-	}
-	room.Audiences = audiences
-
-	_, err = c.UpdateRoom(xl, room.ID, room)
-	if err != nil {
-		xl.Infof("error when updating room %v", err)
-		return err
+		xl.Errorf("failed to get room %s, error %v", roomID, err)
 	}
 
 	// 修改用户状态为空闲。
@@ -366,6 +316,11 @@ func (c *RoomController) LeaveRoom(xl *xlog.Logger, userID string, roomID string
 		xl.Errorf("failed to find user %s in active users, error %v", userID, err)
 		return err
 	}
+	// 若用户状态为直播中（单人直播/PK直播/等待PK），不能以观众身份离开直播间。
+	if activeUser.Status == protocol.UserStatusSingleLive || activeUser.Status == protocol.UserStatusPKLive || activeUser.Status == protocol.UserStatusPKWait {
+		xl.Infof("user %s is live broadcasting in room %s, cannot leave", activeUser.ID, activeUser.Room)
+		return &errors.ServerError{Code: errors.ServerErrorUserBroadcasting}
+	}
 	activeUser.Status = protocol.UserStatusIdle
 	activeUser.Room = ""
 	err = c.activeUserColl.UpdateOne(context.Background(), bson.M{"_id": userID}, bson.M{"$set": &activeUser})
@@ -373,4 +328,18 @@ func (c *RoomController) LeaveRoom(xl *xlog.Logger, userID string, roomID string
 		xl.Errorf("failed to update user status of user %s, error %v", userID, err)
 	}
 	return nil
+}
+
+// GetAudienceNumber 获取房间内的观众人数。
+func (c *RoomController) GetAudienceNumber(xl *xlog.Logger, roomID string) (int, error) {
+	room, err := c.GetRoomByID(xl, roomID)
+	if err != nil {
+		return 0, err
+	}
+	audienceCount, err := c.activeUserColl.Find(context.Background(), bson.M{"room": room.ID, "status": protocol.UserStatusWatching}).Count()
+	if err != nil {
+		xl.Errorf("failed to get count of users watching room %s, error %v", room.ID, err)
+		return 0, err
+	}
+	return int(audienceCount), nil
 }

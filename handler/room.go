@@ -46,6 +46,8 @@ type RoomInterface interface {
 	GetRoomByID(xl *xlog.Logger, roomID string) (*protocol.LiveRoom, error)
 	// UpdateRoom 更新房间信息。
 	UpdateRoom(xl *xlog.Logger, id string, room *protocol.LiveRoom) (*protocol.LiveRoom, error)
+	// GetAudienceNumber 获取房间内观众人数。
+	GetAudienceNumber(xl *xlog.Logger, roomID string) (int, error)
 }
 
 // ListRooms 列出房间请求。
@@ -82,8 +84,12 @@ func (h *RoomHandler) ListCanPKRooms(c *gin.Context) {
 		creatorInfo, err := h.Account.GetAccountByID(xl, room.Creator)
 		if err != nil {
 			xl.Errorf("failed to get account info for user %s, creator of room %s", room.Creator, room.ID)
-			// TODO：创建者用户信息获取失败，是否要算这个房间? 现在是跳过该房间，不显示
-			continue
+			// TODO：创建者用户信息获取失败，是否要算这个房间? 现在是添加一个模拟的用户信息
+			creatorInfo = &protocol.Account{ID: room.Creator, Nickname: "user-" + room.Creator}
+		}
+		audienceNumber, err := h.Room.GetAudienceNumber(xl, room.ID)
+		if err != nil {
+			xl.Errorf("failed to get audience number of room %s, error %v", room.ID, err)
 		}
 		getRoomResp := protocol.GetRoomResponse{
 			ID:   room.ID,
@@ -94,7 +100,7 @@ func (h *RoomHandler) ListCanPKRooms(c *gin.Context) {
 				Gender:   creatorInfo.Gender,
 			},
 			PlayURL:        room.PlayURL,
-			AudienceNumber: len(room.Audiences),
+			AudienceNumber: audienceNumber,
 			Status:         string(room.Status),
 		}
 		resp.Rooms = append(resp.Rooms, getRoomResp)
@@ -122,10 +128,14 @@ func (h *RoomHandler) ListRoomsByCreator(c *gin.Context) {
 	creatorInfo, err := h.Account.GetAccountByID(xl, creatorID)
 	if err != nil {
 		xl.Errorf("failed to get account info of creator %s, error %v", creatorID, err)
-		// TODO:获取创建者账号信息失败是否应当直接返回错误？
-		creatorInfo = &protocol.Account{ID: creatorID}
+		// TODO：创建者用户信息获取失败，是否要算这个房间? 现在是添加一个模拟的用户信息
+		creatorInfo = &protocol.Account{ID: creatorID, Nickname: "user-" + creatorID}
 	}
 	for _, room := range rooms {
+		audienceNumber, err := h.Room.GetAudienceNumber(xl, room.ID)
+		if err != nil {
+			xl.Errorf("failed to get audience number of room %s, error %v", room.ID, err)
+		}
 		getRoomResp := protocol.GetRoomResponse{
 			ID:   room.ID,
 			Name: room.Name,
@@ -135,7 +145,7 @@ func (h *RoomHandler) ListRoomsByCreator(c *gin.Context) {
 				Gender:   creatorInfo.Gender,
 			},
 			PlayURL:        room.PlayURL,
-			AudienceNumber: len(room.Audiences),
+			AudienceNumber: audienceNumber,
 			Status:         string(room.Status),
 		}
 		resp.Rooms = append(resp.Rooms, getRoomResp)
@@ -159,8 +169,12 @@ func (h *RoomHandler) ListAllRooms(c *gin.Context) {
 		creatorInfo, err := h.Account.GetAccountByID(xl, room.Creator)
 		if err != nil {
 			xl.Errorf("failed to get account info for user %s, creator of room %s", room.Creator, room.ID)
-			// TODO：创建者用户信息获取失败，是否要算这个房间? 现在是跳过该房间，不显示
-			continue
+			// TODO：创建者用户信息获取失败，是否要算这个房间? 现在是添加一个模拟的用户信息
+			creatorInfo = &protocol.Account{ID: room.Creator, Nickname: "user-" + room.Creator}
+		}
+		audienceNumber, err := h.Room.GetAudienceNumber(xl, room.ID)
+		if err != nil {
+			xl.Errorf("failed to get audience number of room %s, error %v", room.ID, err)
 		}
 		getRoomResp := protocol.GetRoomResponse{
 			ID:   room.ID,
@@ -171,7 +185,7 @@ func (h *RoomHandler) ListAllRooms(c *gin.Context) {
 				Gender:   creatorInfo.Gender,
 			},
 			PlayURL:        room.PlayURL,
-			AudienceNumber: len(room.Audiences),
+			AudienceNumber: audienceNumber,
 			Status:         string(room.Status),
 		}
 		if room.Status == protocol.LiveRoomStatusPK {
@@ -212,9 +226,7 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 		Creator: userID,
 		PlayURL: h.generatePlayURL(roomID),
 		RTCRoom: roomID,
-		// avoid null values
-		Audiences: []string{},
-		Status:    protocol.LiveRoomStatusSingle,
+		Status:  protocol.LiveRoomStatusSingle,
 	}
 	// 若房间之前不存在，返回创建的房间。若房间已存在，返回已经存在的房间。
 	roomRes, err := h.Room.CreateRoom(xl, room)
@@ -345,11 +357,15 @@ func (h *RoomHandler) GetRoom(c *gin.Context) {
 		xl.Errorf("failed to get user info of %s, creator of room %s", room.Creator, room.ID)
 		creator = &protocol.Account{ID: room.Creator, Nickname: "user-" + room.Creator}
 	}
+	audienceNumber, err := h.Room.GetAudienceNumber(xl, roomID)
+	if err != nil {
+		xl.Errorf("failed to get audience number of room %s,error %v", roomID, err)
+	}
 	resp := &protocol.GetRoomResponse{
 		ID:             room.ID,
 		Name:           room.Name,
 		PlayURL:        room.PlayURL,
-		AudienceNumber: len(room.Audiences),
+		AudienceNumber: audienceNumber,
 		Status:         string(room.Status),
 		Creator: protocol.UserInfo{
 			ID:       creator.ID,

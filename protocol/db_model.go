@@ -106,8 +106,6 @@ type LiveRoom struct {
 	Status LiveRoomStatus `json:"status" bson:"status"`
 	// PKAnchor 正在该直播间参与PK的另一主播的ID。
 	PKAnchor string `json:"pkAnchor,omitempty" bson:"pkAnchor,omitempty"`
-	// Audiences 观众ID列表。
-	Audiences []string `json:"audiences" bson:"audiences"`
 	// IMGroup 该直播间关联聊天群组。
 	IMChatRoom string `json:"imGroup" bson:"imGroup"`
 }
