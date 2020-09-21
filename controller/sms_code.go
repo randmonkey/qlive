@@ -9,6 +9,7 @@ import (
 	qiniuauth "github.com/qiniu/api.v7/v7/auth"
 	qiniusms "github.com/qiniu/api.v7/v7/sms"
 	"github.com/qiniu/qmgo"
+	qmgoopts "github.com/qiniu/qmgo/options"
 	"github.com/qiniu/x/xlog"
 	"github.com/qrtc/qlive/config"
 	"github.com/qrtc/qlive/errors"
@@ -66,6 +67,15 @@ func NewSMSCodeController(mongoURI string, database string, smsConfig *config.SM
 		expireTimeout:   SMSCodeExpireTimeout,
 		randSource:      rand.NewSource(time.Now().UnixNano()),
 		xl:              xl,
+	}
+	expireTimeSeconds := int32(SMSCodeExpireTimeout/time.Second + 1)
+	err = smsCodeColl.CreateOneIndex(context.Background(), qmgoopts.IndexModel{
+		Key:                []string{"sendTime"},
+		ExpireAfterSeconds: &expireTimeSeconds,
+	})
+	if err != nil {
+		xl.Errorf("failed to create index on mongo, error %v", err)
+		return nil, err
 	}
 	// 创建短信发送器。
 	switch smsConfig.Provider {
