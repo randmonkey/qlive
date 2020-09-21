@@ -36,6 +36,7 @@ func (h *AuthHandler) Authenticate(c *gin.Context) {
 	id, err := h.Auth.GetIDByToken(xl, token)
 
 	if err != nil {
+		xl.Debugf("%s %s: request unauthorized, error %v", c.Request.Method, c.Request.URL.Path, err)
 		httpError := errors.NewHTTPErrorBadToken().WithMessage("failed to authenticate with token")
 		c.JSON(http.StatusUnauthorized, httpError)
 		c.Abort()

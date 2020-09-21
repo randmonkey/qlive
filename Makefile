@@ -14,3 +14,6 @@ govet-check:
 
 test:
     CGO_ENABLED=0 go list ./... | xargs go test -timeout=150s
+
+test-coverage:
+	CGO_ENABLED=0 go test ./... -v -cover -timeout=150s
