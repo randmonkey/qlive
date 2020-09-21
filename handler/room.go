@@ -317,6 +317,50 @@ func (h *RoomHandler) generateRTCRoomToken(roomID string, userID string, permiss
 	return token
 }
 
+// GetRoom 根据房间ID获取房间信息。
+func (h *RoomHandler) GetRoom(c *gin.Context) {
+	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
+	requestID := xl.ReqId
+	userID := c.GetString(protocol.UserIDContextKey)
+	roomID := c.Param("roomID")
+
+	room, err := h.Room.GetRoomByID(xl, roomID)
+	if err != nil {
+		serverErr, ok := err.(*errors.ServerError)
+		if ok {
+			switch serverErr.Code {
+			case errors.ServerErrorRoomNotFound:
+				httpErr := errors.NewHTTPErrorNoSuchRoom().WithRequestID(requestID)
+				c.JSON(http.StatusNotFound, httpErr)
+				return
+			}
+		}
+		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
+		c.JSON(http.StatusInternalServerError, httpErr)
+		return
+	}
+	creator, err := h.Account.GetAccountByID(xl, room.Creator)
+	if err != nil {
+		// 获取主播账号信息失败，这里暂时用模拟的的账号信息填充。
+		xl.Errorf("failed to get user info of %s, creator of room %s", room.Creator, room.ID)
+		creator = &protocol.Account{ID: room.Creator, Nickname: "user-" + room.Creator}
+	}
+	resp := &protocol.GetRoomResponse{
+		ID:             room.ID,
+		Name:           room.Name,
+		PlayURL:        room.PlayURL,
+		AudienceNumber: len(room.Audiences),
+		Status:         string(room.Status),
+		Creator: protocol.UserInfo{
+			ID:       creator.ID,
+			Nickname: creator.Nickname,
+			Gender:   creator.Gender,
+		},
+	}
+	xl.Infof("user %s get room info of room %s", userID, roomID)
+	c.JSON(http.StatusOK, resp)
+}
+
 // UpdateRoom 更新直播间信息。
 func (h *RoomHandler) UpdateRoom(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)

@@ -91,7 +91,9 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		v1.POST("leave_room", addRequestID, authHandler.Authenticate, roomHandler.LeaveRoom)
 
 		// 观众端/主播端API：获取全部房间或者PK房间。
-		v1.GET("rooms", addRequestID, authHandler.Authenticate, roomHandler.ListRooms)
+		v1.GET("rooms/", addRequestID, authHandler.Authenticate, roomHandler.ListRooms)
+		// 根据房间ID获取房间。
+		v1.GET("rooms/:roomID", addRequestID, authHandler.Authenticate, roomHandler.GetRoom)
 		// IM API：生成IM token。
 		v1.POST("im_user_token", addRequestID, authHandler.Authenticate, imHandler.GetUserToken)
 	}
