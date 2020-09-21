@@ -311,6 +311,23 @@ func (c *RoomController) EnterRoom(xl *xlog.Logger, userID string, roomID string
 	return updatedRoom, nil
 }
 
+// ListRoomsByFields 根据字段列出房间。
+func (c *RoomController) ListRoomsByFields(xl *xlog.Logger, fields map[string]interface{}) ([]protocol.LiveRoom, error) {
+	if xl == nil {
+		xl = c.xl
+	}
+	if fields == nil {
+		fields = map[string]interface{}{}
+	}
+
+	rooms := []protocol.LiveRoom{}
+	err := c.roomColl.Find(context.Background(), fields).All(&rooms)
+	if err != nil {
+		xl.Errorf("failed to list rooms, error %v", err)
+	}
+	return rooms, nil
+}
+
 // LeaveRoom 退出直播房间。
 func (c *RoomController) LeaveRoom(xl *xlog.Logger, userID string, roomID string) error {
 	if xl == nil {
