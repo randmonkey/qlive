@@ -45,7 +45,7 @@ func (c *AuthController) GetIDByToken(xl *xlog.Logger, token string) (id string,
 	activeUserRecord := &protocol.ActiveUser{}
 	err = c.activeUserColl.Find(context.Background(), map[string]interface{}{"token": token}).One(activeUserRecord)
 	if err != nil {
-		if !qmgo.IsErrNoDocuments(err) {
+		if qmgo.IsErrNoDocuments(err) {
 			xl.Infof("token %s not found in active users", token)
 			return "", err
 		}
