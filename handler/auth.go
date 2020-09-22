@@ -24,10 +24,14 @@ type AuthInterface interface {
 // Authenticate 校验请求者的身份。
 func (h *AuthHandler) Authenticate(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
+	requestID := xl.ReqId
 	// 优先根据Authorization:Bearer <token>校验。
 	authHeader := c.GetHeader("Authorization")
 	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
-		httpError := errors.NewHTTPErrorNotLoggedIn().WithMessage("user not logged in")
+		xl.Debug("authorization header is empty or in wrong format")
+		xl.Debugf("auth header: %v", authHeader)
+		xl.Debugf("%s %s: request unauthorized, wrong auth header format", c.Request.Method, c.Request.URL.Path)
+		httpError := errors.NewHTTPErrorNotLoggedIn().WithRequestID(requestID).WithMessage("user not logged in")
 		c.JSON(http.StatusUnauthorized, httpError)
 		c.Abort()
 		return
@@ -37,7 +41,7 @@ func (h *AuthHandler) Authenticate(c *gin.Context) {
 
 	if err != nil {
 		xl.Debugf("%s %s: request unauthorized, error %v", c.Request.Method, c.Request.URL.Path, err)
-		httpError := errors.NewHTTPErrorBadToken().WithMessage("failed to authenticate with token")
+		httpError := errors.NewHTTPErrorBadToken().WithRequestID(requestID).WithMessage("failed to authenticate with token")
 		c.JSON(http.StatusUnauthorized, httpError)
 		c.Abort()
 		return
