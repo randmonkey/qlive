@@ -14,7 +14,7 @@ import (
 
 func TestAuthenticate(t *testing.T) {
 	handler := &AuthHandler{
-		Auth: &MockAuth{},
+		Auth: &mockAuth{},
 	}
 	testCases := []struct {
 		authHeader         string
