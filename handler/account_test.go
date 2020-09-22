@@ -18,8 +18,8 @@ import (
 
 func TestSendSMSCode(t *testing.T) {
 	handler := &AccountHandler{
-		Account: &MockAccount{},
-		SMSCode: &MockSMSCode{
+		Account: &mockAccount{},
+		SMSCode: &mockSMSCode{
 			NumberToError: map[string]error{
 				"19999990000": &errors.ServerError{Code: errors.ServerErrorSMSSendTooFrequent},
 				"19999990001": &errors.ServerError{Code: errors.ServerErrorSMSSendFail},
@@ -69,8 +69,8 @@ func TestSendSMSCode(t *testing.T) {
 
 func TestLogin(t *testing.T) {
 	handler := &AccountHandler{
-		Account: &MockAccount{},
-		SMSCode: &MockSMSCode{},
+		Account: &mockAccount{},
+		SMSCode: &mockSMSCode{},
 	}
 
 	testCases := []struct {
@@ -124,12 +124,12 @@ func TestLogin(t *testing.T) {
 
 func TestUpdateProfile(t *testing.T) {
 	handler := &AccountHandler{
-		Account: &MockAccount{
+		Account: &mockAccount{
 			accounts: []*protocol.Account{
 				{ID: "user-0"},
 			},
 		},
-		SMSCode: &MockSMSCode{},
+		SMSCode: &mockSMSCode{},
 	}
 	testCases := []struct {
 		userID             string

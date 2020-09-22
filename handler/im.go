@@ -20,7 +20,7 @@ type IMHandler struct {
 	IMService IMInterface
 }
 
-// GetUserToken 获取用户token。
+// GetUserToken 获取IM用户token。
 func (h *IMHandler) GetUserToken(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
 	requestID := xl.ReqId
