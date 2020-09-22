@@ -108,6 +108,14 @@ func (h *AccountHandler) generateUserID() string {
 	return id
 }
 
+func (h *AccountHandler) generateNicknameByPhoneNumber(phoneNumber string) string {
+	namePrefix := "用户_"
+	if len(phoneNumber) < 4 {
+		return namePrefix + phoneNumber
+	}
+	return namePrefix + phoneNumber[len(phoneNumber)-4:]
+}
+
 // LoginBySMS 使用手机短信验证码登录。
 func (h *AccountHandler) LoginBySMS(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
@@ -134,6 +142,7 @@ func (h *AccountHandler) LoginBySMS(c *gin.Context) {
 			xl.Infof("phone number %s not found, create new account", args.PhoneNumber)
 			newAccount := &protocol.Account{
 				ID:          h.generateUserID(),
+				Nickname:    h.generateNicknameByPhoneNumber(args.PhoneNumber),
 				PhoneNumber: args.PhoneNumber,
 			}
 			createErr := h.Account.CreateAccount(xl, newAccount)
