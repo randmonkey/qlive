@@ -75,29 +75,43 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 	{
 		// 账号相关API。
 		v1.POST("login", addRequestID, accountHandler.Login)
+		v1.POST("login/", addRequestID, accountHandler.Login)
 		v1.POST("send_sms_code", addRequestID, accountHandler.SendSMSCode)
+		v1.POST("send_sms_code/", addRequestID, accountHandler.SendSMSCode)
 		v1.POST("profile", addRequestID, authHandler.Authenticate, accountHandler.UpdateProfile)
+		v1.POST("profile/", addRequestID, authHandler.Authenticate, accountHandler.UpdateProfile)
 		v1.POST("logout", addRequestID, authHandler.Authenticate, accountHandler.Logout)
+		v1.POST("logout/", addRequestID, authHandler.Authenticate, accountHandler.Logout)
 
 		// 主播端API：创建、关闭房间。
 		v1.POST("rooms", addRequestID, authHandler.Authenticate, roomHandler.CreateRoom)
+		v1.POST("rooms/", addRequestID, authHandler.Authenticate, roomHandler.CreateRoom)
 		v1.POST("close_room", addRequestID, authHandler.Authenticate, roomHandler.CloseRoom)
+		v1.POST("close_room/", addRequestID, authHandler.Authenticate, roomHandler.CloseRoom)
 		// 主播端API：更新房间信息。
 		v1.PUT("rooms/:roomID", addRequestID, authHandler.Authenticate, roomHandler.UpdateRoom)
+		v1.PUT("rooms/:roomID/", addRequestID, authHandler.Authenticate, roomHandler.UpdateRoom)
 		// 主播端API：重新进入房间，刷新RTC room token。
 		v1.POST("refresh_room", addRequestID, authHandler.Authenticate, roomHandler.RefreshRoom)
+		v1.POST("refresh_room/", addRequestID, authHandler.Authenticate, roomHandler.RefreshRoom)
 		// 观众端API：进入、退出房间。
 		v1.POST("enter_room", addRequestID, authHandler.Authenticate, roomHandler.EnterRoom)
+		v1.POST("enter_room/", addRequestID, authHandler.Authenticate, roomHandler.EnterRoom)
 		v1.POST("leave_room", addRequestID, authHandler.Authenticate, roomHandler.LeaveRoom)
+		v1.POST("leave_room/", addRequestID, authHandler.Authenticate, roomHandler.LeaveRoom)
 
 		// 观众端/主播端API：获取全部房间或者PK房间。
+		v1.GET("rooms", addRequestID, authHandler.Authenticate, roomHandler.ListRooms)
 		v1.GET("rooms/", addRequestID, authHandler.Authenticate, roomHandler.ListRooms)
 		// 根据房间ID获取房间。
 		v1.GET("rooms/:roomID", addRequestID, authHandler.Authenticate, roomHandler.GetRoom)
+		v1.GET("rooms/:roomID/", addRequestID, authHandler.Authenticate, roomHandler.GetRoom)
 		// IM API：生成IM token。
 		v1.POST("im_user_token", addRequestID, authHandler.Authenticate, imHandler.GetUserToken)
+		v1.POST("im_user_token/", addRequestID, authHandler.Authenticate, imHandler.GetUserToken)
 	}
 	router.NoRoute(addRequestID, returnNotFound)
+	router.RedirectTrailingSlash = false
 	return router, nil
 }
 
