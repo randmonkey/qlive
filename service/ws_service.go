@@ -32,7 +32,8 @@ type WSClient struct {
 	xl              *xlog.Logger
 	playerID        string
 	online          *atomic.Bool
-	authorizeDone   chan struct{}
+	authorizeChan   chan struct{}
+	disconnectChan  chan struct{}
 	remoteAddr      string
 	remotePort      string
 	lastMessageTime time.Time
@@ -84,7 +85,6 @@ func (c *WSClient) Notify(t string, v PMessage) {
 
 	if ok := c.p.TryOutput(t, m); !ok {
 		c.xl.Errorf("TryOutput failed %v", c.playerID)
-		c.Close()
 	}
 
 }
@@ -99,7 +99,7 @@ func (c *WSClient) monitor() {
 		c.xl.Infof("%v:%v authentication failure", c.remoteAddr, c.remotePort)
 		c.Close()
 		c.xl.Infof("%v:%v disconnected.", c.remoteAddr, c.remotePort)
-	case <-c.authorizeDone:
+	case <-c.authorizeChan:
 		c.xl.Infof("%v:%v authorized successful as %v", c.remoteAddr, c.remotePort, c.playerID)
 		c.s.AddPlayer(c.playerID, c)
 		c.online.Store(true)
@@ -107,11 +107,6 @@ func (c *WSClient) monitor() {
 		c.Notify(protocol.MT_Ping, ping)
 		for {
 			select {
-			case <-c.p.StopD():
-				c.online.Store(false)
-				c.s.RemovePlayer(c.playerID)
-				c.xl.Infof("%v:%v %v disconnected.", c.remoteAddr, c.remotePort, c.playerID)
-				return
 			case <-time.After(time.Second * time.Duration(c.s.conf.WsConf.PingTickerSecond)):
 				c.Notify(protocol.MT_Ping, ping)
 				if time.Now().Sub(c.lastMessageTime) > time.Second*time.Duration(c.s.conf.WsConf.PongTimeoutSecond) {
@@ -121,6 +116,10 @@ func (c *WSClient) monitor() {
 					c.xl.Infof("%v:%v %v disconnected.", c.remoteAddr, c.remotePort, c.playerID)
 					return
 				}
+			case <-c.disconnectChan:
+				c.Close()
+				c.xl.Infof("%v:%v connection closed.", c.remoteAddr, c.remotePort)
+				return
 			}
 		}
 	}
@@ -151,6 +150,8 @@ func (c *WSClient) parallelProcess(ctx context.Context, t string, m msgpump.Mess
 		c.onAnswerPK(ctx, m)
 	case protocol.MT_EndPKRequest:
 		c.onEndPK(ctx, m)
+	case protocol.MT_DisconnectNotify:
+		c.onDisconnect(ctx, m)
 	default:
 		c.xl.Errorf("unknown message from %v, %v=%v", c.playerID, t, string(m))
 	}
@@ -190,12 +191,13 @@ func (c *WSClient) onAuthorize(ctx context.Context, m msgpump.Message) {
 	}
 
 	c.playerID = id
-	close(c.authorizeDone)
+	close(c.authorizeChan)
 
 	res := &protocol.AuthorizeResponse{
-		RPCID: req.RPCID,
-		Code:  errors.WSErrorOK,
-		Error: errors.WSErrorToString[errors.WSErrorOK],
+		RPCID:       req.RPCID,
+		Code:        errors.WSErrorOK,
+		Error:       errors.WSErrorToString[errors.WSErrorOK],
+		PongTimeout: c.s.conf.WsConf.PongTimeoutSecond,
 	}
 	c.Notify(protocol.MT_AuthorizeResponse, res)
 	return
@@ -741,6 +743,18 @@ func (c *WSClient) onEndPK(ctx context.Context, m msgpump.Message) {
 	return
 }
 
+func (c *WSClient) onDisconnect(ctx context.Context, m msgpump.Message) {
+	var notify protocol.DisconnectNotify
+	err := notify.Unmarshal(m)
+	if err != nil {
+		c.xl.Errorf("unknown disconnect message: %v", m)
+		return
+	}
+	close(c.disconnectChan)
+	c.s.RemovePlayer(c.playerID)
+	c.xl.Infof("%v take the initiative to disconnect.", c.playerID)
+}
+
 // WebSocket Server
 type WSServer struct {
 	conf config.Config
@@ -760,13 +774,14 @@ type WSServer struct {
 func (s *WSServer) CreateClient(r *http.Request, rAddr, rPort string) (websocket.Client, error) {
 
 	return &WSClient{
-		s:             s,
-		st:            time.Now(),
-		xl:            xlog.New(NewReqID()),
-		online:        atomic.NewBool(false),
-		authorizeDone: make(chan struct{}),
-		remoteAddr:    rAddr,
-		remotePort:    rPort,
+		s:              s,
+		st:             time.Now(),
+		xl:             xlog.New(NewReqID()),
+		online:         atomic.NewBool(false),
+		authorizeChan:  make(chan struct{}),
+		disconnectChan: make(chan struct{}),
+		remoteAddr:     rAddr,
+		remotePort:     rPort,
 	}, nil
 }
 
@@ -774,6 +789,11 @@ func (s *WSServer) CreateClient(r *http.Request, rAddr, rPort string) (websocket
 func (s *WSServer) AddPlayer(id string, c *WSClient) error {
 	s.cl.Lock()
 	defer s.cl.Unlock()
+
+	if client, ok := s.conns[id]; ok && client != nil {
+		s.xl.Infof("%v reconnect", id)
+		close(client.disconnectChan)
+	}
 
 	s.conns[id] = c
 	return nil
@@ -787,6 +807,21 @@ func (s *WSServer) RemovePlayer(id string) error {
 	if _, ok := s.conns[id]; !ok {
 		return errors.NewWSError("player not online")
 	}
+
+	// close room create by player
+	room, err := s.roomCtl.GetRoomByFields(s.xl, map[string]interface{}{"creator": id})
+	if err != nil {
+		s.xl.Errorf("can not find room create by %v", id)
+	}
+	if room != nil {
+		err := s.roomCtl.CloseRoom(s.xl, id, room.ID)
+		if err != nil {
+			s.xl.Errorf("close room %v create by %v faild", room.ID, id)
+		} else {
+			s.xl.Infof("room %v create by %v has been closed", room.ID, id)
+		}
+	}
+
 	delete(s.conns, id)
 	return nil
 }

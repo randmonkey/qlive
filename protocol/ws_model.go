@@ -17,6 +17,7 @@ const (
 	MT_PKOfferNotify     = "on-pk-offer"
 	MT_PKAnswerNotify    = "on-pk-answer"
 	MT_PKEndNotify       = "on-pk-end"
+	MT_DisconnectNotify  = "disconnect"
 )
 
 type Ping struct {
@@ -55,9 +56,10 @@ func (p *AuthorizeRequest) Unmarshal(b []byte) error {
 }
 
 type AuthorizeResponse struct {
-	RPCID string `json:"rpcID,omitempty"`
-	Code  int    `json:"code"`
-	Error string `json:"error"`
+	RPCID       string `json:"rpcID,omitempty"`
+	Code        int    `json:"code"`
+	Error       string `json:"error"`
+	PongTimeout int    `json:"pongTimeout,omitempty"`
 }
 
 func (p *AuthorizeResponse) Marshal() ([]byte, error) {
@@ -207,5 +209,17 @@ func (p *PKEndNotify) Marshal() ([]byte, error) {
 }
 
 func (p *PKEndNotify) Unmarshal(b []byte) error {
+	return json.Unmarshal(b, p)
+}
+
+type DisconnectNotify struct {
+	RPCID string `json:"rpcID,omitempty"`
+}
+
+func (p *DisconnectNotify) Marshal() ([]byte, error) {
+	return json.Marshal(p)
+}
+
+func (p *DisconnectNotify) Unmarshal(b []byte) error {
 	return json.Unmarshal(b, p)
 }
