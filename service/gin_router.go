@@ -108,6 +108,7 @@ func addRequestID(c *gin.Context) {
 		c.Request.Header.Set(protocol.RequestIDHeader, requestID)
 	}
 	xl := xlog.New(requestID)
+	xl.Debugf("request: %s %s", c.Request.Method, c.Request.URL.Path)
 	c.Set(protocol.XLogKey, xl)
 }
 

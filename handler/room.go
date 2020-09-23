@@ -232,30 +232,29 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 	roomRes, err := h.Room.CreateRoom(xl, room)
 	if err != nil {
 		serverErr, ok := err.(*errors.ServerError)
-		if !ok {
-			xl.Errorf("create room error %v", err)
-			httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
-			c.JSON(http.StatusInternalServerError, httpErr)
-			return
+		if ok {
+			switch serverErr.Code {
+			case errors.ServerErrorRoomNameUsed:
+				httpErr := errors.NewHTTPErrorRoomNameused().WithRequestID(requestID)
+				c.JSON(http.StatusConflict, httpErr)
+				return
+			case errors.ServerErrorTooManyRooms:
+				httpErr := errors.NewHTTPErrorTooManyRooms().WithRequestID(requestID)
+				c.JSON(http.StatusServiceUnavailable, httpErr)
+				return
+			case errors.ServerErrorCanOnlyCreateOneRoom:
+				httpErr := errors.NewHTTPErrorCanOnlyCreateOneRoom().WithRequestID(requestID)
+				c.JSON(http.StatusForbidden, httpErr)
+				return
+			case errors.ServerErrorUserWatching:
+				httpErr := errors.NewHTTPErrorUserWatching().WithRequestID(requestID)
+				c.JSON(http.StatusConflict, httpErr)
+				return
+			}
 		}
-		switch serverErr.Code {
-		case errors.ServerErrorRoomNameUsed:
-			httpErr := errors.NewHTTPErrorRoomNameused().WithRequestID(requestID)
-			c.JSON(http.StatusConflict, httpErr)
-			return
-		case errors.ServerErrorTooManyRooms:
-			httpErr := errors.NewHTTPErrorTooManyRooms().WithRequestID(requestID)
-			c.JSON(http.StatusServiceUnavailable, httpErr)
-			return
-		case errors.ServerErrorCanOnlyCreateOneRoom:
-			httpErr := errors.NewHTTPErrorCanOnlyCreateOneRoom().WithRequestID(requestID)
-			c.JSON(http.StatusForbidden, httpErr)
-			return
-		default:
-			httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
-			c.JSON(http.StatusInternalServerError, httpErr)
-			return
-		}
+		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
+		c.JSON(http.StatusInternalServerError, httpErr)
+		return
 	}
 
 	xl.Infof("user %s created or refreshed room: ID %s, name %s", userID, roomRes.ID, args.RoomName)
@@ -577,9 +576,24 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 
 	updatedRoom, err := h.Room.EnterRoom(xl, userID, args.RoomID)
 	if err != nil {
+		serverErr, ok := err.(*errors.ServerError)
+		if ok {
+			switch serverErr.Code {
+			case errors.ServerErrorRoomNotFound:
+				xl.Infof("enter room failed: room %s not found", args.RoomID)
+				httpErr := errors.NewHTTPErrorNoSuchRoom().WithRequestID(requestID)
+				c.JSON(http.StatusNotFound, httpErr)
+				return
+			case errors.ServerErrorUserBroadcasting:
+				xl.Infof("enter room failed: user %s is broadcasting", userID)
+				httpErr := errors.NewHTTPErrorUserBroadcasting().WithRequestID(requestID)
+				c.JSON(http.StatusConflict, httpErr)
+				return
+			}
+		}
 		xl.Errorf("enter room failed, enter room request: %v, error: %v", args, err)
-		httpErr := errors.NewHTTPErrorNoSuchRoom().WithRequestID(requestID)
-		c.JSON(http.StatusBadRequest, httpErr)
+		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
+		c.JSON(http.StatusInternalServerError, httpErr)
 		return
 	}
 
