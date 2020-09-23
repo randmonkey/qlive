@@ -33,6 +33,8 @@ const (
 	HTTPErrorNoSuchUser           = 404001
 	HTTPErrorNoSuchRoom           = 404002
 	HTTPErrorRoomNameUsed         = 409002
+	HTTPErrorUserBroadcating      = 409003
+	HTTPErrorUserWatching         = 409004
 	HTTPErrorSMSSendTooFrequent   = 429001
 	HTTPErrorTooManyRooms         = 503001
 	HTTPErrorInternal             = 500000
@@ -174,6 +176,22 @@ func NewHTTPErrorRoomNameused() *HTTPError {
 	return &HTTPError{
 		Code:    HTTPErrorRoomNameUsed,
 		Summary: "room name already used",
+	}
+}
+
+// NewHTTPErrorUserBroadcasting 用户正在直播中，不能进入直播间。
+func NewHTTPErrorUserBroadcasting() *HTTPError {
+	return &HTTPError{
+		Code:    HTTPErrorUserBroadcating,
+		Summary: "user is live broadcasting",
+	}
+}
+
+// NewHTTPErrorUserWatching 用户正在观看中，不能创建直播间。
+func NewHTTPErrorUserWatching() *HTTPError {
+	return &HTTPError{
+		Code:    HTTPErrorUserWatching,
+		Summary: "user is watching",
 	}
 }
 
