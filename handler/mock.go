@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/qiniu/x/xlog"
+	"github.com/qrtc/qlive/errors"
 	"github.com/qrtc/qlive/protocol"
 )
 
@@ -125,4 +126,21 @@ func (m *mockAuth) GetIDByToken(xl *xlog.Logger, token string) (string, error) {
 }
 
 // mockRoom 模拟的房间管理服务。
-type mockRoom struct{}
+type mockRoom struct {
+	rooms         []*protocol.LiveRoom
+	roomAudiences map[string][]string
+	maxRooms      int
+}
+
+func (m *mockRoom) CreateRoom(xl *xlog.Logger, newRoom *protocol.LiveRoom) (*protocol.LiveRoom, error) {
+	if len(m.rooms) >= m.maxRooms {
+		return nil, &errors.ServerError{Code: errors.ServerErrorTooManyRooms}
+	}
+	for _, room := range m.rooms {
+		if room.ID == newRoom.ID {
+			return nil, &errors.ServerError{Code: errors.ServerErrorRoomNameUsed}
+		}
+	}
+	m.rooms = append(m.rooms, newRoom)
+	return newRoom, nil
+}
