@@ -5,6 +5,7 @@
 *.so
 *.dylib
 bin/
+docker_images/*/qlive-linux
 
 # Test binary, built with `go test -c`
 *.test

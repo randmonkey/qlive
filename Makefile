@@ -1,8 +1,15 @@
+QLIVE_IMAGE_TAG ?= $(shell date +%Y%m%d%H%M%S)
+
 all: dep
 	GODEBUG=netdns=go go install -v ./...
 
 linux: dep
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go install -v ./...
+
+docker-image: dep
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o docker_images/qlive-server/qlive-linux .
+	docker build docker_images/qlive-server -t qlive-server:${QLIVE_IMAGE_TAG}
+	rm docker_images/qlive-server/qlive-linux
 
 dep:
 
@@ -17,3 +24,5 @@ test:
 
 test-coverage:
 	CGO_ENABLED=0 go test ./... -v -cover -timeout=150s
+
+before-commit: gofmt-check govet-check test

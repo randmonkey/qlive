@@ -1,0 +1,43 @@
+## 配置文件样例。
+{
+    "debug_level":__DEBUG_LEVEL__,
+    "listen_addr": "__HTTP_LISTEN_ADDR__",
+    "websocket_conf":{
+        "listen_addr":"__WS_LISTEN_ADDR__",
+        "serve_uri": "/qlive",
+        "authorize_timeout_ms": 5000,
+        "ping_ticker_s": 5,
+        "pong_timeout_s": 20
+    },
+    "mongo":{
+        "uri":"__MONGODB_URI__",
+        "database": "__MONGODB_DATABASE__"
+    },
+    "sms":{
+        "provider":"qiniu",
+        "qiniu_sms":{
+            "key_pair":{
+                "access_key": "__QINIU_SMS_ACCESS_KEY__", # replace with real ak/sk
+                "secert_key": "__QINIU_SMS_SECRET_KEY__"
+            },
+            "signature_id":"__QINIU_SMS_SIGN_ID__", # replace with real singature ID and template ID
+            "template_id":"__QINIU_SMS_TEMP_ID__"
+        }
+    },
+    "rtc":{
+        "key_pair":{
+            "access_key": "__QINIU_RTC_ACCESS_KEY__", # replace with real ak/sk
+            "secert_key": "__QINIU_RTC_SECRET_KEY__"
+        },
+        "app_id":"__QINIU_RTC_APP_ID__", # replace with real RTC app ID
+        "publish_host": "__QINIU_LIVE_PUBLISH_HOST__", # replace with real publish host & hubs
+        "publish_hub": "__QINIU_LIVE_PUBLISH_HUB__"
+    },
+    "im":{
+        "provider":"rongcloud",
+        "rongcloud":{
+            "app_key":"__RONGCLOUD_APP_KEY__", #replace with real rongcloud appkey/appsecret
+            "app_secret":"__RONGCLOUD_APP_SECRET__"
+        }
+    }
+}
