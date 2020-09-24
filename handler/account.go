@@ -40,6 +40,18 @@ func validatePhoneNumber(phoneNumber string) bool {
 	return phoneNumberRegExp.MatchString(phoneNumber)
 }
 
+// @Tags qlive api
+// @ID send-sms-code
+// @Summary Send SMS code to user
+// @Description Send SMS code to user and the code will survive for ten minutes
+// @Accept  json
+// @Produce  json
+// @Param phone_number query string true "Send sms code to user's phone number"
+// @Success 200 {string} ok
+// @Failure 400 {object} errors.HTTPError
+// @Failure 429 {object} errors.HTTPError
+// @Failure 500 {object} errors.HTTPError
+// @Router /send_sms_code [post]
 // SendSMSCode 发送短信验证码。
 func (h *AccountHandler) SendSMSCode(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
@@ -77,6 +89,18 @@ const (
 	LoginTypeSMSCode = "smscode"
 )
 
+// @Tags qlive api
+// @ID log-in
+// @Summary User log in
+// @Description User log in with sms code
+// @Accept  json
+// @Produce  json
+// @Param logintype query string true "type of user logs in"
+// @Param SMSLoginArgs body protocol.SMSLoginArgs true "user's phone number and sms code"
+// @Success 200 {object} protocol.LoginResponse
+// @Failure 400 {object} errors.HTTPError
+// @Failure 401 {object} errors.HTTPError
+// @Router /login [post]
 // Login 处理登录请求，根据query分不同类型处理。
 func (h *AccountHandler) Login(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
@@ -188,6 +212,18 @@ func (h *AccountHandler) LoginBySMS(c *gin.Context) {
 	c.JSON(http.StatusOK, res)
 }
 
+// @Tags qlive api
+// @ID update-profile
+// @Summary User updates profile
+// @Description User updates personal profile
+// @Accept  json
+// @Produce  json
+// @Param updatedProfile body protocol.UpdateProfileArgs true "User updates personal profile"
+// @Success 200 {string} ok
+// @Failure 400 {object} errors.HTTPError
+// @Failure 404 {object} errors.HTTPError
+// @Failure 500 {object} errors.HTTPError
+// @Router /profile [post]
 // UpdateProfile 修改用户信息。
 func (h *AccountHandler) UpdateProfile(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
@@ -239,6 +275,15 @@ func (h *AccountHandler) UpdateProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, ret)
 }
 
+// @Tags qlive api
+// @ID log-out
+// @Summary User logs out
+// @Description Online user logs out
+// @Accept  json
+// @Produce  json
+// @Success 200 {string} ok
+// @Failure 401 {object} errors.HTTPError
+// @Router /logout [post]
 // Logout 退出登录。
 func (h *AccountHandler) Logout(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)

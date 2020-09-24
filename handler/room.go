@@ -50,6 +50,16 @@ type RoomInterface interface {
 	GetAudienceNumber(xl *xlog.Logger, roomID string) (int, error)
 }
 
+// @Tags qlive api
+// @ID list-rooms
+// @Summary List rooms
+// @Description if can_pk set in url,server will returns rooms that can pk.Otherwise,all rooms will be returned
+// @Accept  json
+// @Produce  json
+// @Param can_pk query string false "only list rooms that can pk"
+// @Success 200 {object} protocol.ListRoomsResponse
+// @Failure 500 {object} errors.HTTPError
+// @Router /rooms [get]
 // ListRooms 列出房间请求。
 func (h *RoomHandler) ListRooms(c *gin.Context) {
 	if c.Query("can_pk") == "true" {
@@ -198,6 +208,20 @@ func (h *RoomHandler) ListAllRooms(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// @Tags qlive api
+// @ID create-room
+// @Summary Anchor creates room
+// @Description Anchor creates room
+// @Accept  json
+// @Produce  json
+// @Param CreateRoomArgs body protocol.CreateRoomArgs true "Anchor requests to create room"
+// @Success 200 {string} protocol.CreateRoomResponse
+// @Failure 400 {object} errors.HTTPError
+// @Failure 403 {object} errors.HTTPError
+// @Failure 409 {object} errors.HTTPError
+// @Failure 500 {object} errors.HTTPError
+// @Failure 503 {object} errors.HTTPError
+// @Router /rooms [post]
 // CreateRoom 创建直播间。
 func (h *RoomHandler) CreateRoom(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
@@ -328,6 +352,17 @@ func (h *RoomHandler) generateRTCRoomToken(roomID string, userID string, permiss
 	return token
 }
 
+// @Tags qlive api
+// @ID get-room-by-id
+// @Summary Get room by id
+// @Description Get room by id
+// @Accept  json
+// @Produce  json
+// @Param roomID path string true " Get room by id"
+// @Success 200 {object} protocol.GetRoomResponse
+// @Failure 404 {object} errors.HTTPError
+// @Failure 500 {object} errors.HTTPError
+// @Router /rooms/{roomID} [get]
 // GetRoom 根据房间ID获取房间信息。
 func (h *RoomHandler) GetRoom(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
@@ -376,6 +411,20 @@ func (h *RoomHandler) GetRoom(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// @Tags qlive api
+// @ID update-room
+// @Summary Anchor updates room
+// @Description Anchor updates room
+// @Accept  json
+// @Produce  json
+// @Param roomID path string true "room id"
+// @Param UpdateRoomArgs body protocol.UpdateRoomArgs true "Anchor requests to update room"
+// @Success 200 {string} protocol.UpdateRoomResponse
+// @Failure 400 {object} errors.HTTPError
+// @Failure 404 {object} errors.HTTPError
+// @Failure 409 {object} errors.HTTPError
+// @Failure 500 {object} errors.HTTPError
+// @Router /rooms/{roomID} [put]
 // UpdateRoom 更新直播间信息。
 func (h *RoomHandler) UpdateRoom(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
@@ -459,6 +508,17 @@ func (h *RoomHandler) UpdateRoom(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// @Tags qlive api
+// @ID close-room
+// @Summary Anchor closes room
+// @Description Anchor closes room
+// @Accept  json
+// @Produce  json
+// @Param CloseRoomArgs body protocol.CloseRoomArgs true "Anchor requests to close room"
+// @Success 200 {string} ok
+// @Failure 400 {object} errors.HTTPError
+// @Failure 500 {object} errors.HTTPError
+// @Router /rooms [post]
 // CloseRoom 关闭直播间。
 func (h *RoomHandler) CloseRoom(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
@@ -499,6 +559,18 @@ func (h *RoomHandler) CloseRoom(c *gin.Context) {
 	// return OK
 }
 
+// @Tags qlive api
+// @ID refresh-room
+// @Summary Anchor refreshes room
+// @Description Anchor refreshes room
+// @Accept  json
+// @Produce  json
+// @Param RefreshRoomArgs body protocol.RefreshRoomArgs true "Anchor requests to refresh room"
+// @Success 200 {object} protocol.RefreshRoomResponse
+// @Failure 400 {object} errors.HTTPError
+// @Failure 404 {object} errors.HTTPError
+// @Failure 500 {object} errors.HTTPError
+// @Router /refresh_room [post]
 // RefreshRoom 主播重新回到房间。
 func (h *RoomHandler) RefreshRoom(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
@@ -559,6 +631,19 @@ func (h *RoomHandler) RefreshRoom(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// @Tags qlive api
+// @ID enter-room
+// @Summary Audience enters room
+// @Description Audience enters room
+// @Accept  json
+// @Produce  json
+// @Param EnterRoomRequest body protocol.EnterRoomRequest true "Audience enters room"
+// @Success 200 {object} protocol.EnterRoomResponse
+// @Failure 400 {object} errors.HTTPError
+// @Failure 404 {object} errors.HTTPError
+// @Failure 409 {object} errors.HTTPError
+// @Failure 500 {object} errors.HTTPError
+// @Router /enter_room [post]
 // EnterRoom 进入直播间。
 func (h *RoomHandler) EnterRoom(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
@@ -643,6 +728,16 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 	c.JSON(http.StatusOK, ret)
 }
 
+// @Tags qlive api
+// @ID leave-room
+// @Summary Audience leaves room
+// @Description Audience leaves room
+// @Accept  json
+// @Produce  json
+// @Param LeaveRoomArgs body protocol.LeaveRoomArgs true "Audience leaves room"
+// @Success 200 {string} ok
+// @Failure 400 {object} errors.HTTPError
+// @Router /leave_room [post]
 // LeaveRoom 离开直播间。
 func (h *RoomHandler) LeaveRoom(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
