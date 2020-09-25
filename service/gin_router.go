@@ -14,8 +14,16 @@ import (
 	"github.com/qrtc/qlive/errors"
 	"github.com/qrtc/qlive/handler"
 	"github.com/qrtc/qlive/protocol"
+
+	_ "github.com/qrtc/qlive/docs"
+	"github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
+// @title 互动直播API
+// @version 0.0.1
+// @description  http apis
+// @BasePath /v1
 // NewRouter 返回gin router，分流API。
 func NewRouter(conf *config.Config) (*gin.Engine, error) {
 	router := gin.New()
@@ -112,6 +120,9 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 	}
 	router.NoRoute(addRequestID, returnNotFound)
 	router.RedirectTrailingSlash = false
+
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	return router, nil
 }
 

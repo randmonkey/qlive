@@ -20,6 +20,15 @@ type IMHandler struct {
 	IMService IMInterface
 }
 
+// @Tags qlive api
+// @ID get-user-token
+// @Summary Get user token
+// @Description User Gets user-token
+// @Accept  json
+// @Produce  json
+// @Success 200 {object} protocol.IMTokenResponse
+// @Failure 502 {object} errors.HTTPError
+// @Router /im_user_token [post]
 // GetUserToken 获取IM用户token。
 func (h *IMHandler) GetUserToken(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)

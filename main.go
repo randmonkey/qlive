@@ -1,3 +1,18 @@
+// @title 互动直播API
+// @version 1.0
+// @description 互动直播API
+// @termsOfService https://www.qiniu.com
+
+// @contact.name qlive developer
+// @contact.url https://github.com/qrtc/qlive
+// @contact.email
+
+// @license.name
+// @license.url
+
+// @host localhost:8080
+// @BasePath /v1
+
 package main
 
 import (
