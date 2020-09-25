@@ -137,7 +137,6 @@ func addRequestID(c *gin.Context) {
 	c.Set(protocol.XLogKey, xl)
 }
 
-
 func returnNotFound(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
 	httpErr := errors.NewHTTPErrorNotFound().WithRequestID(xl.ReqId)
