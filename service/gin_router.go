@@ -17,7 +17,7 @@ import (
 
 	"github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
-	_ "github.com/qrtc/qlive/docs"
+	//_ "github.com/qrtc/qlive/docs"
 )
 
 // @title 互动直播api
