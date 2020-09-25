@@ -1,0 +1,573 @@
+basePath: /v1
+definitions:
+  errors.HTTPError:
+    properties:
+      code:
+        description: 自定义错误码。
+        type: integer
+      message:
+        description: Message 错误消息。
+        type: string
+      requestID:
+        description: 请求ID。
+        type: string
+      summary:
+        description: Summary
+        type: string
+    type: object
+  protocol.CloseRoomArgs:
+    properties:
+      roomID:
+        type: string
+      userID:
+        type: string
+    type: object
+  protocol.CreateRoomArgs:
+    properties:
+      roomName:
+        type: string
+      userID:
+        type: string
+    type: object
+  protocol.EnterRoomRequest:
+    properties:
+      roomID:
+        type: string
+      userID:
+        type: string
+    type: object
+  protocol.EnterRoomResponse:
+    properties:
+      creator:
+        $ref: '#/definitions/protocol.UserInfo'
+        description: 直播间创建者信息。
+        type: object
+      imGroup:
+        $ref: '#/definitions/protocol.IMChatRoom'
+        description: IMGroup IM聊天室信息。
+        type: object
+      imUser:
+        $ref: '#/definitions/protocol.IMUser'
+        description: IMUser IM聊天用户信息。
+        type: object
+      pkAnchor:
+        $ref: '#/definitions/protocol.UserInfo'
+        description: PKAnchorID 若正在PK，返回PK主播的信息。未在PK时该字段为空。
+        type: object
+      playURL:
+        description: 直播间的拉流观看地址。
+        type: string
+      roomID:
+        type: string
+      roomName:
+        type: string
+      status:
+        description: |-
+          TODO：添加创建者的昵称/性别等信息？
+          Status 房间的状态，单人直播中/PK中
+        type: string
+    type: object
+  protocol.GetRoomResponse:
+    properties:
+      audienceNumber:
+        description: 只返回观众人数
+        type: integer
+      creator:
+        $ref: '#/definitions/protocol.UserInfo'
+        description: 创建者的用户ID
+        type: object
+      id:
+        type: string
+      name:
+        type: string
+      pkAnchor:
+        $ref: '#/definitions/protocol.UserInfo'
+        description: PKAnchor 若房间PK中，返回PK主播的信息。
+        type: object
+      playURL:
+        description: |-
+          TODO：添加创建者的昵称/性别等信息？
+          WatchURL 观看地址
+        type: string
+      status:
+        description: 房间状态，单人直播中/PK中。
+        type: string
+    type: object
+  protocol.IMChatRoom:
+    type: object
+  protocol.IMTokenResponse:
+    properties:
+      token:
+        type: string
+      userID:
+        type: string
+    type: object
+  protocol.IMUser:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      token:
+        type: string
+    type: object
+  protocol.LeaveRoomArgs:
+    properties:
+      roomID:
+        type: string
+      userID:
+        type: string
+    type: object
+  protocol.ListRoomsResponse:
+    properties:
+      rooms:
+        items:
+          $ref: '#/definitions/protocol.GetRoomResponse'
+        type: array
+    type: object
+  protocol.LoginResponse:
+    properties:
+      gender:
+        type: string
+      id:
+        type: string
+      nickname:
+        type: string
+      token:
+        type: string
+    type: object
+  protocol.RefreshRoomArgs:
+    properties:
+      roomID:
+        type: string
+    type: object
+  protocol.RefreshRoomResponse:
+    properties:
+      roomID:
+        type: string
+      roomName:
+        type: string
+      rtcRoom:
+        description: RTCRoom 对应的RTC房间。
+        type: string
+      rtcRoomToken:
+        description: RTCRoomToken 创建/加入RTC房间的token。
+        type: string
+      wsURL:
+        description: WSURL websocket 服务器地址。
+        type: string
+    type: object
+  protocol.SMSLoginArgs:
+    properties:
+      phoneNumber:
+        type: string
+      smsCode:
+        type: string
+    type: object
+  protocol.UpdateProfileArgs:
+    properties:
+      gender:
+        type: string
+      nickname:
+        type: string
+    type: object
+  protocol.UpdateRoomArgs:
+    properties:
+      roomName:
+        type: string
+    type: object
+  protocol.UserInfo:
+    properties:
+      gender:
+        type: string
+      id:
+        type: string
+      nickname:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    name: qlive developer
+    url: https://github.com/qrtc/qlive
+  description: 互动直播API
+  license: {}
+  termsOfService: https://www.qiniu.com
+  title: 互动直播API
+  version: "1.0"
+paths:
+  /enter_room:
+    post:
+      consumes:
+      - application/json
+      description: Audience enters room
+      operationId: enter-room
+      parameters:
+      - description: Audience enters room
+        in: body
+        name: EnterRoomRequest
+        required: true
+        schema:
+          $ref: '#/definitions/protocol.EnterRoomRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/protocol.EnterRoomResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+      summary: Audience enters room
+      tags:
+      - qlive api
+  /im_user_token:
+    post:
+      consumes:
+      - application/json
+      description: User Gets user-token
+      operationId: get-user-token
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/protocol.IMTokenResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+      summary: Get user token
+      tags:
+      - qlive api
+  /leave_room:
+    post:
+      consumes:
+      - application/json
+      description: Audience leaves room
+      operationId: leave-room
+      parameters:
+      - description: Audience leaves room
+        in: body
+        name: LeaveRoomArgs
+        required: true
+        schema:
+          $ref: '#/definitions/protocol.LeaveRoomArgs'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+      summary: Audience leaves room
+      tags:
+      - qlive api
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: User log in with sms code
+      operationId: log-in
+      parameters:
+      - description: type of user logs in
+        in: query
+        name: logintype
+        required: true
+        type: string
+      - description: user's phone number and sms code
+        in: body
+        name: SMSLoginArgs
+        required: true
+        schema:
+          $ref: '#/definitions/protocol.SMSLoginArgs'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/protocol.LoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+      summary: User log in
+      tags:
+      - qlive api
+  /logout:
+    post:
+      consumes:
+      - application/json
+      description: Online user logs out
+      operationId: log-out
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+      summary: User logs out
+      tags:
+      - qlive api
+  /profile:
+    post:
+      consumes:
+      - application/json
+      description: User updates personal profile
+      operationId: update-profile
+      parameters:
+      - description: User updates personal profile
+        in: body
+        name: updatedProfile
+        required: true
+        schema:
+          $ref: '#/definitions/protocol.UpdateProfileArgs'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+      summary: User updates profile
+      tags:
+      - qlive api
+  /refresh_room:
+    post:
+      consumes:
+      - application/json
+      description: Anchor refreshes room
+      operationId: refresh-room
+      parameters:
+      - description: Anchor requests to refresh room
+        in: body
+        name: RefreshRoomArgs
+        required: true
+        schema:
+          $ref: '#/definitions/protocol.RefreshRoomArgs'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/protocol.RefreshRoomResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+      summary: Anchor refreshes room
+      tags:
+      - qlive api
+  /rooms:
+    get:
+      consumes:
+      - application/json
+      description: if can_pk set in url,server will returns rooms that can pk.Otherwise,all rooms will be returned
+      operationId: list-rooms
+      parameters:
+      - description: only list rooms that can pk
+        in: query
+        name: can_pk
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/protocol.ListRoomsResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+      summary: List rooms
+      tags:
+      - qlive api
+    post:
+      consumes:
+      - application/json
+      description: Anchor closes room
+      operationId: close-room
+      parameters:
+      - description: Anchor requests to close room
+        in: body
+        name: CloseRoomArgs
+        required: true
+        schema:
+          $ref: '#/definitions/protocol.CloseRoomArgs'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+      summary: Anchor closes room
+      tags:
+      - qlive api
+  /rooms/{roomID}:
+    get:
+      consumes:
+      - application/json
+      description: Get room by id
+      operationId: get-room-by-id
+      parameters:
+      - description: ' Get room by id'
+        in: path
+        name: roomID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/protocol.GetRoomResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+      summary: Get room by id
+      tags:
+      - qlive api
+    put:
+      consumes:
+      - application/json
+      description: Anchor updates room
+      operationId: update-room
+      parameters:
+      - description: room id
+        in: path
+        name: roomID
+        required: true
+        type: string
+      - description: Anchor requests to update room
+        in: body
+        name: UpdateRoomArgs
+        required: true
+        schema:
+          $ref: '#/definitions/protocol.UpdateRoomArgs'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+      summary: Anchor updates room
+      tags:
+      - qlive api
+  /send_sms_code:
+    post:
+      consumes:
+      - application/json
+      description: Send SMS code to user and the code will survive for ten minutes
+      operationId: send-sms-code
+      parameters:
+      - description: Send sms code to user's phone number
+        in: query
+        name: phone_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/errors.HTTPError'
+      summary: Send SMS code to user
+      tags:
+      - qlive api
+swagger: "2.0"
