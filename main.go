@@ -1,14 +1,14 @@
-// @title 互动直播api
+// @title 互动直播API
 // @version 1.0
-// @description 互动直播api，专注直播100年.
-// @termsOfService https://github.com/qrtc/qlive
+// @description 互动直播API
+// @termsOfService https://www.qiniu.com
 
 // @contact.name qlive developer
-// @contact.url https://www.qiniu.com
-// @contact.email 907531706@qq.com
+// @contact.url https://github.com/qrtc/qlive
+// @contact.email
 
-// @license.name Apache 2.0
-// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+// @license.name
+// @license.url
 
 // @host localhost:8080
 // @BasePath /v1

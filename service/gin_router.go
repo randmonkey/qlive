@@ -15,12 +15,12 @@ import (
 	"github.com/qrtc/qlive/handler"
 	"github.com/qrtc/qlive/protocol"
 
+	_ "github.com/qrtc/qlive/docs"
 	"github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
-	//_ "github.com/qrtc/qlive/docs"
 )
 
-// @title 互动直播api
+// @title 互动直播API
 // @version 0.0.1
 // @description  http apis
 // @BasePath /v1
