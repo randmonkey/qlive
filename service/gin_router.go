@@ -16,7 +16,7 @@ import (
 	"github.com/qrtc/qlive/protocol"
 
 	_ "github.com/qrtc/qlive/docs"
-	"github.com/swaggo/files"
+	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
@@ -55,25 +55,34 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, wsPortStr, err := net.SplitHostPort(conf.WsConf.ListenAddr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid websocket listen address, failed to parse: %v", err)
-	}
-	wsPort, err := strconv.Atoi(wsPortStr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid websocket listen port, failed to parse: %v", err)
-	}
+
 	roomHandler := &handler.RoomHandler{
 		Account:   accountController,
 		Room:      roomController,
 		RTCConfig: conf.RTC,
-		WSPort:    wsPort,
+		WSAddress: conf.WsConf.ExternalWSAddr,
 	}
+	if conf.WsConf.ExternalWSPort != 0 {
+		roomHandler.WSPort = conf.WsConf.ExternalWSPort
+	} else {
+		_, wsPortStr, err := net.SplitHostPort(conf.WsConf.ListenAddr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid websocket listen address, failed to parse: %v", err)
+		}
+		wsPort, err := strconv.Atoi(wsPortStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid websocket listen port, failed to parse: %v", err)
+		}
+		roomHandler.WSPort = wsPort
+	}
+
 	if conf.WsConf.WSOverTLS {
 		roomHandler.WSProtocol = "wss"
 	} else {
 		roomHandler.WSProtocol = "ws"
 	}
+
+	roomHandler.WSPath = "/qlive"
 
 	imController, err := controller.NewIMController(conf.IM, nil)
 	if err != nil {
