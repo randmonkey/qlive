@@ -11,6 +11,7 @@ type WebSocketConf struct {
 
 	ListenAddr      string `json:"listen_addr" validate:"nonzero"`
 	ServeURI        string `json:"serve_uri" validate:"nonzero"`
+	WSOverTLS       bool   `json:"ws_over_tls"`
 	PumpWriteQueue  int    `json:"pump_write_queue" validate:"nonzero"`
 	OriginHost      string `json:"origin_host"`
 	ReadBufferSize  int    `json:"conn_read_size"`
