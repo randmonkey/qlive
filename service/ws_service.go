@@ -808,6 +808,50 @@ func (s *WSServer) RemovePlayer(id string) error {
 		return errors.NewWSError("player not online")
 	}
 
+	// if on pk, send other anchor end pk notify
+	selfActiveUser, err := s.accountCtl.GetActiveUserByID(s.xl, id)
+	if err == nil {
+		if selfActiveUser.Status == protocol.UserStatusPKLive {
+			pkRoom, err := s.roomCtl.GetRoomByID(s.xl, selfActiveUser.Room)
+			if err == nil {
+				endMessage := &protocol.PKEndNotify{
+					RPCID:    NewReqID(),
+					PKRoomID: pkRoom.ID,
+				}
+				if id == pkRoom.PKAnchor {
+					s.notifyPlayer(pkRoom.Creator, protocol.MT_PKEndNotify, endMessage)
+					otherActiveUser, err := s.accountCtl.GetActiveUserByID(s.xl, pkRoom.Creator)
+					if err == nil {
+						otherActiveUser.Status = protocol.UserStatusSingleLive
+						s.accountCtl.UpdateActiveUser(s.xl, pkRoom.Creator, otherActiveUser)
+
+						pkRoom.PKAnchor = ""
+						pkRoom.Status = protocol.LiveRoomStatusSingle
+						s.roomCtl.UpdateRoom(s.xl, pkRoom.ID, pkRoom)
+					}
+
+				} else if id == pkRoom.Creator {
+					s.notifyPlayer(pkRoom.PKAnchor, protocol.MT_PKEndNotify, endMessage)
+					otherActiveUser, err := s.accountCtl.GetActiveUserByID(s.xl, pkRoom.PKAnchor)
+					if err == nil {
+						otherRoom, err := s.roomCtl.GetRoomByFields(s.xl, map[string]interface{}{"creator": pkRoom.PKAnchor})
+						if err == nil {
+							otherActiveUser.Status = protocol.UserStatusSingleLive
+							otherActiveUser.Room = otherRoom.ID
+							s.accountCtl.UpdateActiveUser(s.xl, pkRoom.Creator, otherActiveUser)
+
+							otherRoom.PKAnchor = ""
+							otherRoom.Status = protocol.LiveRoomStatusSingle
+							s.roomCtl.UpdateRoom(s.xl, otherRoom.ID, otherRoom)
+						}
+					}
+				}
+			}
+		}
+		selfActiveUser.Status = protocol.UserStatusIdle
+		s.accountCtl.UpdateActiveUser(s.xl, id, selfActiveUser)
+	}
+
 	// close room create by player
 	room, err := s.roomCtl.GetRoomByFields(s.xl, map[string]interface{}{"creator": id})
 	if err != nil {
@@ -831,6 +875,10 @@ func (s *WSServer) NotifyPlayer(id string, t string, v PMessage) error {
 	s.cl.RLock()
 	defer s.cl.RUnlock()
 
+	return s.notifyPlayer(id, t, v)
+}
+
+func (s *WSServer) notifyPlayer(id string, t string, v PMessage) error {
 	player, ok := s.conns[id]
 	if !ok || !player.IsOnline() {
 		return errors.NewWSError("player not online")
