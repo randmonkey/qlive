@@ -64,11 +64,15 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		return nil, fmt.Errorf("invalid websocket listen port, failed to parse: %v", err)
 	}
 	roomHandler := &handler.RoomHandler{
-		Account:    accountController,
-		Room:       roomController,
-		RTCConfig:  conf.RTC,
-		WSPort:     wsPort,
-		WSProtocol: "ws",
+		Account:   accountController,
+		Room:      roomController,
+		RTCConfig: conf.RTC,
+		WSPort:    wsPort,
+	}
+	if conf.WsConf.WSOverTLS {
+		roomHandler.WSProtocol = "wss"
+	} else {
+		roomHandler.WSProtocol = "ws"
 	}
 
 	imController, err := controller.NewIMController(conf.IM, nil)
