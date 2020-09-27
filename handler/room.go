@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -22,10 +23,14 @@ type RoomHandler struct {
 	Account   AccountInterface
 	Room      RoomInterface
 	RTCConfig *config.QiniuRTCConfig
-	// websocket 协议，ws 或 wss
+	// WSProtocol websocket 协议，ws 或 wss
 	WSProtocol string
-	// websocket 监听端口
+	// WSAddress 对外返回的websocket 服务地址。
+	WSAddress string
+	// WSPort websocket 监听端口。
 	WSPort int
+	// WSPath websocket 服务根路径地址。
+	WSPath string
 }
 
 // RoomInterface 处理房间相关API的接口。
@@ -282,16 +287,12 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 	}
 
 	xl.Infof("user %s created or refreshed room: ID %s, name %s", userID, roomRes.ID, args.RoomName)
-	host, _, err := net.SplitHostPort(c.Request.Host)
-	if err != nil {
-		xl.Errorf("failed to get split host and port in request.Host, error %v", err)
-	}
 	resp := &protocol.CreateRoomResponse{
 		RoomID:       roomRes.ID,
 		RoomName:     args.RoomName,
 		RTCRoom:      roomRes.ID,
 		RTCRoomToken: h.generateRTCRoomToken(roomID, userID, "admin"),
-		WSURL:        h.generateWSURL(host),
+		WSURL:        h.generateWSURL(xl, c.Request.Host),
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -317,8 +318,27 @@ func (h *RoomHandler) generateRoomID() string {
 	return roomID
 }
 
-func (h *RoomHandler) generateWSURL(host string) string {
-	return h.WSProtocol + "://" + host + ":" + strconv.Itoa(h.WSPort) + "/qlive"
+func (h *RoomHandler) generateWSURL(xl *xlog.Logger, host string) string {
+	// 优先使用配置的websocket 地址。
+	if h.WSAddress != "" {
+		xl.Debugf("websocket address has been specified to %s", h.WSAddress)
+		if strings.HasPrefix(h.WSAddress, "ws://") || strings.HasPrefix(h.WSAddress, "wss://") {
+			return h.WSAddress
+		}
+		return h.WSProtocol + "://" + h.WSAddress
+	}
+	hostPart, _, err := net.SplitHostPort(host)
+	if err != nil {
+		xl.Debugf("cannot split into host and port, error %v, directly use host", err)
+	} else {
+		host = hostPart
+	}
+	var portPart string
+	if (h.WSPort == 80 && h.WSProtocol == "ws") || (h.WSPort == 443 && h.WSProtocol == "wss") {
+	} else {
+		portPart = ":" + strconv.Itoa(h.WSPort)
+	}
+	return h.WSProtocol + "://" + host + portPart + h.WSPath
 }
 
 func (h *RoomHandler) generatePlayURL(roomID string) string {
@@ -617,16 +637,12 @@ func (h *RoomHandler) RefreshRoom(c *gin.Context) {
 
 	xl.Infof("user %s refresh room %s, generated new RTC room token", userID, roomID)
 
-	host, _, err := net.SplitHostPort(c.Request.Host)
-	if err != nil {
-		xl.Errorf("failed to get split host and port in request.Host, error %v", err)
-	}
 	resp := &protocol.RefreshRoomResponse{
 		RoomID:       roomID,
 		RoomName:     room.Name,
 		RTCRoom:      roomID,
 		RTCRoomToken: h.generateRTCRoomToken(roomID, userID, "admin"),
-		WSURL:        h.generateWSURL(host),
+		WSURL:        h.generateWSURL(xl, c.Request.Host),
 	}
 	c.JSON(http.StatusOK, resp)
 }

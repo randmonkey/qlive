@@ -9,9 +9,14 @@ type WebSocketConf struct {
 	PongTimeoutSecond      int `json:"pong_timeout_s"`
 	ReconnectTimeoutSecond int `json:"reconnect_timeout_s"`
 
-	ListenAddr      string `json:"listen_addr" validate:"nonzero"`
-	ServeURI        string `json:"serve_uri" validate:"nonzero"`
-	WSOverTLS       bool   `json:"ws_over_tls"`
+	ListenAddr string `json:"listen_addr" validate:"nonzero"`
+	ServeURI   string `json:"serve_uri" validate:"nonzero"`
+	WSOverTLS  bool   `json:"ws_over_tls"`
+	// 对外返回的websocket 服务地址。为空时将根据请求信息自动生成。
+	ExternalWSAddr string `json:"external_ws_addr"`
+	// 当ExternalWSAddr为空时，且ExternalWSPort被指定，根据请求信息中的host+ExternalWSPort确定对外返回的websocket地址。
+	ExternalWSPort int `json:"external_ws_port"`
+
 	PumpWriteQueue  int    `json:"pump_write_queue" validate:"nonzero"`
 	OriginHost      string `json:"origin_host"`
 	ReadBufferSize  int    `json:"conn_read_size"`
