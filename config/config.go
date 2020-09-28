@@ -72,17 +72,27 @@ type IMConfig struct {
 	RongCloud *RongCloudIMConfig `json:"rongcloud"`
 }
 
+// PrometheusConfig prometheus 监控服务配置。
+type PrometheusConfig struct {
+	MetricsPath         string `json:"metrics_path"`
+	EnablePush          bool   `json:"enable_push"`
+	PushURL             string `json:"push_url"`
+	PushJob             string `json:"push_job"`
+	PushIntervalSeconds int    `json:"push_interval_s"`
+}
+
 // Config 后端配置。
 type Config struct {
 	// debug等级，为1时输出info/warn/error日志，为0除以上外还输出debug日志
 	DebugLevel int    `json:"debug_level"`
 	ListenAddr string `json:"listen_addr"`
 
-	WsConf *WebSocketConf  `json:"websocket_conf"`
-	Mongo  *MongoConfig    `json:"mongo"`
-	SMS    *SMSConfig      `json:"sms"`
-	RTC    *QiniuRTCConfig `json:"rtc"`
-	IM     *IMConfig       `json:"im"`
+	WsConf     *WebSocketConf    `json:"websocket_conf"`
+	Mongo      *MongoConfig      `json:"mongo"`
+	SMS        *SMSConfig        `json:"sms"`
+	RTC        *QiniuRTCConfig   `json:"rtc"`
+	IM         *IMConfig         `json:"im"`
+	Prometheus *PrometheusConfig `json:"prometheus"`
 }
 
 // NewSample 返回样例配置。
@@ -125,6 +135,10 @@ func NewSample() *Config {
 				AppKey:    os.Getenv("RONGCLOUD_APP_KEY"),
 				AppSecret: os.Getenv("RONGCLOUD_APP_SECRET"),
 			},
+		},
+		Prometheus: &PrometheusConfig{
+			MetricsPath: "/metrics",
+			EnablePush:  false,
 		},
 	}
 }
