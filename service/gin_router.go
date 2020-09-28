@@ -5,19 +5,20 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/qiniu/x/xlog"
 
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
+
 	"github.com/qrtc/qlive/config"
 	"github.com/qrtc/qlive/controller"
+	_ "github.com/qrtc/qlive/docs"
 	"github.com/qrtc/qlive/errors"
 	"github.com/qrtc/qlive/handler"
 	"github.com/qrtc/qlive/protocol"
-
-	_ "github.com/qrtc/qlive/docs"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 // @title 互动直播API
@@ -92,49 +93,58 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		IMService: imController,
 	}
 
+	promHandler := handler.NewPromHandler(conf.Prometheus, nil)
+
 	v1 := router.Group("/v1")
+	v1.Use(addRequestID)
 	{
 		// 账号相关API。
-		v1.POST("login", addRequestID, accountHandler.Login)
-		v1.POST("login/", addRequestID, accountHandler.Login)
-		v1.POST("send_sms_code", addRequestID, accountHandler.SendSMSCode)
-		v1.POST("send_sms_code/", addRequestID, accountHandler.SendSMSCode)
-		v1.POST("profile", addRequestID, authHandler.Authenticate, accountHandler.UpdateProfile)
-		v1.POST("profile/", addRequestID, authHandler.Authenticate, accountHandler.UpdateProfile)
-		v1.POST("logout", addRequestID, authHandler.Authenticate, accountHandler.Logout)
-		v1.POST("logout/", addRequestID, authHandler.Authenticate, accountHandler.Logout)
+		v1.POST("login", accountHandler.Login, handler.SetMetrics)
+		v1.POST("login/", accountHandler.Login, handler.SetMetrics)
+		v1.POST("send_sms_code", accountHandler.SendSMSCode, handler.SetMetrics)
+		v1.POST("send_sms_code/", accountHandler.SendSMSCode, handler.SetMetrics)
+		v1.POST("profile", authHandler.Authenticate, accountHandler.UpdateProfile, handler.SetMetrics)
+		v1.POST("profile/", authHandler.Authenticate, accountHandler.UpdateProfile, handler.SetMetrics)
+		v1.POST("logout", authHandler.Authenticate, accountHandler.Logout, handler.SetMetrics)
+		v1.POST("logout/", authHandler.Authenticate, accountHandler.Logout, handler.SetMetrics)
 
 		// 主播端API：创建、关闭房间。
-		v1.POST("rooms", addRequestID, authHandler.Authenticate, roomHandler.CreateRoom)
-		v1.POST("rooms/", addRequestID, authHandler.Authenticate, roomHandler.CreateRoom)
-		v1.POST("close_room", addRequestID, authHandler.Authenticate, roomHandler.CloseRoom)
-		v1.POST("close_room/", addRequestID, authHandler.Authenticate, roomHandler.CloseRoom)
+		v1.POST("rooms", authHandler.Authenticate, roomHandler.CreateRoom, handler.SetMetrics)
+		v1.POST("rooms/", authHandler.Authenticate, roomHandler.CreateRoom, handler.SetMetrics)
+		v1.POST("close_room", authHandler.Authenticate, roomHandler.CloseRoom, handler.SetMetrics)
+		v1.POST("close_room/", authHandler.Authenticate, roomHandler.CloseRoom, handler.SetMetrics)
 		// 主播端API：更新房间信息。
-		v1.PUT("rooms/:roomID", addRequestID, authHandler.Authenticate, roomHandler.UpdateRoom)
-		v1.PUT("rooms/:roomID/", addRequestID, authHandler.Authenticate, roomHandler.UpdateRoom)
+		v1.PUT("rooms/:roomID", authHandler.Authenticate, roomHandler.UpdateRoom, handler.SetMetrics)
+		v1.PUT("rooms/:roomID/", authHandler.Authenticate, roomHandler.UpdateRoom, handler.SetMetrics)
 		// 主播端API：重新进入房间，刷新RTC room token。
-		v1.POST("refresh_room", addRequestID, authHandler.Authenticate, roomHandler.RefreshRoom)
-		v1.POST("refresh_room/", addRequestID, authHandler.Authenticate, roomHandler.RefreshRoom)
+		v1.POST("refresh_room", authHandler.Authenticate, roomHandler.RefreshRoom, handler.SetMetrics)
+		v1.POST("refresh_room/", authHandler.Authenticate, roomHandler.RefreshRoom, handler.SetMetrics)
 		// 观众端API：进入、退出房间。
-		v1.POST("enter_room", addRequestID, authHandler.Authenticate, roomHandler.EnterRoom)
-		v1.POST("enter_room/", addRequestID, authHandler.Authenticate, roomHandler.EnterRoom)
-		v1.POST("leave_room", addRequestID, authHandler.Authenticate, roomHandler.LeaveRoom)
-		v1.POST("leave_room/", addRequestID, authHandler.Authenticate, roomHandler.LeaveRoom)
+		v1.POST("enter_room", authHandler.Authenticate, roomHandler.EnterRoom, handler.SetMetrics)
+		v1.POST("enter_room/", authHandler.Authenticate, roomHandler.EnterRoom, handler.SetMetrics)
+		v1.POST("leave_room", authHandler.Authenticate, roomHandler.LeaveRoom, handler.SetMetrics)
+		v1.POST("leave_room/", authHandler.Authenticate, roomHandler.LeaveRoom, handler.SetMetrics)
 
 		// 观众端/主播端API：获取全部房间或者PK房间。
-		v1.GET("rooms", addRequestID, authHandler.Authenticate, roomHandler.ListRooms)
-		v1.GET("rooms/", addRequestID, authHandler.Authenticate, roomHandler.ListRooms)
+		v1.GET("rooms", authHandler.Authenticate, roomHandler.ListRooms, handler.SetMetrics)
+		v1.GET("rooms/", authHandler.Authenticate, roomHandler.ListRooms, handler.SetMetrics)
 		// 根据房间ID获取房间。
-		v1.GET("rooms/:roomID", addRequestID, authHandler.Authenticate, roomHandler.GetRoom)
-		v1.GET("rooms/:roomID/", addRequestID, authHandler.Authenticate, roomHandler.GetRoom)
+		v1.GET("rooms/:roomID", authHandler.Authenticate, roomHandler.GetRoom, handler.SetMetrics)
+		v1.GET("rooms/:roomID/", authHandler.Authenticate, roomHandler.GetRoom, handler.SetMetrics)
 		// IM API：生成IM token。
-		v1.POST("im_user_token", addRequestID, authHandler.Authenticate, imHandler.GetUserToken)
-		v1.POST("im_user_token/", addRequestID, authHandler.Authenticate, imHandler.GetUserToken)
+		v1.POST("im_user_token", authHandler.Authenticate, imHandler.GetUserToken, handler.SetMetrics)
+		v1.POST("im_user_token/", authHandler.Authenticate, imHandler.GetUserToken, handler.SetMetrics)
 	}
+
+	metricsPath := conf.Prometheus.MetricsPath
+	if metricsPath == "" {
+		metricsPath = handler.DefaultMetricsPath
+	}
+	router.GET(conf.Prometheus.MetricsPath, promHandler.HandleMetrics)
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	router.NoRoute(addRequestID, returnNotFound)
 	router.RedirectTrailingSlash = false
-
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	return router, nil
 }
@@ -148,6 +158,7 @@ func addRequestID(c *gin.Context) {
 	xl := xlog.New(requestID)
 	xl.Debugf("request: %s %s", c.Request.Method, c.Request.URL.Path)
 	c.Set(protocol.XLogKey, xl)
+	c.Set(protocol.RequestStartKey, time.Now())
 }
 
 func returnNotFound(c *gin.Context) {

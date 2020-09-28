@@ -15,6 +15,9 @@ const (
 
 	// UserIDContextKey 存放在请求context 中的用户ID。
 	UserIDContextKey = "userID"
+
+	// RequestStartKey 存放在gin context中的请求开始的时间戳，单位为纳秒。
+	RequestStartKey = "request-start-timestamp-nano"
 )
 
 // UserInfo 用户的信息，包括ID、昵称等。
