@@ -496,6 +496,7 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 		pkRoom.Status = protocol.LiveRoomStatusPK
 		pkRoom.PKAnchor = selfPlayer.ID
 		selfActiveUser.Status = protocol.UserStatusPKLive
+		selfActiveUser.Room = selfRoom.ID
 		pkActiveUser.Status = protocol.UserStatusPKLive
 		pkActiveUser.Room = selfRoom.ID
 	} else {
