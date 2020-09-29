@@ -78,7 +78,7 @@ Websocket信令服务配置
         "listen_addr":":8082",
         "serve_uri": "/qlive",
         "ws_over_tls": false,
-#       "external_ws_url":"ws://example.com/qlive" # uncomment this line 
+#       "external_ws_url":"ws://example.com/qlive",
         "authorize_timeout_ms": 5000,
         "ping_ticker_s": 5,
         "pong_timeout_s": 20
@@ -172,7 +172,7 @@ Prometheus监控配置
 ```
     "prometheus":{
         "metrics_path":"/metrics",
-        "enable_push":false # change this to true to enable pushing metrics to pushgateway
+        "enable_push":false, # change this to true to enable pushing metrics to pushgateway
         "push_url": "127.0.0.1:9091",
         "push_interval_s":30
     }
