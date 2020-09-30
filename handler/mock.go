@@ -17,6 +17,7 @@ package handler
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/qiniu/x/xlog"
 	"github.com/qrtc/qlive/errors"
@@ -127,20 +128,163 @@ func (m *mockAuth) GetIDByToken(xl *xlog.Logger, token string) (string, error) {
 
 // mockRoom 模拟的房间管理服务。
 type mockRoom struct {
-	rooms         []*protocol.LiveRoom
+	rooms map[string]*protocol.LiveRoom
+	// roomID -> slice of userIDs
 	roomAudiences map[string][]string
 	maxRooms      int
+	lock          sync.RWMutex
 }
 
+// CreateRoom 模拟创建房间。
 func (m *mockRoom) CreateRoom(xl *xlog.Logger, newRoom *protocol.LiveRoom) (*protocol.LiveRoom, error) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
 	if len(m.rooms) >= m.maxRooms {
 		return nil, &errors.ServerError{Code: errors.ServerErrorTooManyRooms}
 	}
 	for _, room := range m.rooms {
 		if room.ID == newRoom.ID {
+			return nil, fmt.Errorf("room %s ID used", room.ID)
+		}
+		if room.Name == newRoom.Name {
+			if room.Creator == newRoom.Creator {
+				return room, nil
+			}
 			return nil, &errors.ServerError{Code: errors.ServerErrorRoomNameUsed}
 		}
+		if room.Creator == newRoom.Creator {
+			return nil, &errors.ServerError{Code: errors.ServerErrorCanOnlyCreateOneRoom}
+		}
 	}
-	m.rooms = append(m.rooms, newRoom)
+	m.rooms[newRoom.ID] = newRoom
 	return newRoom, nil
+}
+
+// 列出全部房间。
+func (m *mockRoom) ListAllRooms(xl *xlog.Logger) ([]protocol.LiveRoom, error) {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+	ret := []protocol.LiveRoom{}
+	for _, room := range m.rooms {
+		ret = append(ret, *room)
+	}
+	return ret, nil
+}
+
+// TODO：添加根据指定字段列出房间的功能
+func (m *mockRoom) ListRoomsByFields(xl *xlog.Logger, fields map[string]interface{}) ([]protocol.LiveRoom, error) {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+	ret := []protocol.LiveRoom{}
+	for _, room := range m.rooms {
+		ret = append(ret, *room)
+	}
+	return ret, nil
+}
+
+// 关闭房间
+func (m *mockRoom) CloseRoom(xl *xlog.Logger, userID string, roomID string) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	_, ok := m.rooms[roomID]
+	if !ok {
+		return &errors.ServerError{Code: errors.ServerErrorRoomNotFound}
+	}
+	delete(m.rooms, roomID)
+	delete(m.roomAudiences, roomID)
+
+	return nil
+}
+
+func (m *mockRoom) EnterRoom(xl *xlog.Logger, userID string, roomID string) (*protocol.LiveRoom, error) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	for _, room := range m.rooms {
+		if room.Creator == userID {
+			return nil, &errors.ServerError{Code: errors.ServerErrorUserBroadcasting}
+		}
+	}
+	room, ok := m.rooms[roomID]
+	if !ok {
+		return nil, &errors.ServerError{Code: errors.ServerErrorRoomNotFound}
+	}
+	foundUser := false
+	for _, audienceID := range m.roomAudiences[roomID] {
+		if audienceID == userID {
+			foundUser = true
+		}
+	}
+	if !foundUser {
+		m.roomAudiences[roomID] = append(m.roomAudiences[roomID], userID)
+	}
+	return room, nil
+}
+
+func (m *mockRoom) LeaveRoom(xl *xlog.Logger, userID string, roomID string) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	for _, room := range m.rooms {
+		if room.Creator == userID {
+			return &errors.ServerError{Code: errors.ServerErrorUserBroadcasting}
+		}
+	}
+	_, ok := m.rooms[roomID]
+	if !ok {
+		return &errors.ServerError{Code: errors.ServerErrorRoomNotFound}
+	}
+	if len(m.roomAudiences[roomID]) > 0 {
+		foundUser := false
+		var index int
+		for i, audienceID := range m.roomAudiences[roomID] {
+			if audienceID == userID {
+				foundUser = true
+				index = i
+			}
+		}
+		if foundUser {
+			newAudiences := m.roomAudiences[roomID][0:index]
+			if index < len(m.roomAudiences)-1 {
+				newAudiences = append(newAudiences, m.roomAudiences[roomID][index+1:]...)
+			}
+			m.roomAudiences[roomID] = newAudiences
+		}
+	}
+	return nil
+}
+
+func (m *mockRoom) GetRoomByID(xl *xlog.Logger, roomID string) (*protocol.LiveRoom, error) {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+
+	room, ok := m.rooms[roomID]
+	if !ok {
+		return nil, &errors.ServerError{Code: errors.ServerErrorRoomNotFound}
+	}
+	return room, nil
+}
+
+func (m *mockRoom) UpdateRoom(xl *xlog.Logger, id string, newRoom *protocol.LiveRoom) (*protocol.LiveRoom, error) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	_, ok := m.rooms[id]
+	if !ok {
+		return nil, &errors.ServerError{Code: errors.ServerErrorRoomNotFound}
+	}
+	m.rooms[id] = newRoom
+	return newRoom, nil
+}
+
+func (m *mockRoom) GetAudienceNumber(xl *xlog.Logger, roomID string) (int, error) {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+
+	_, ok := m.rooms[roomID]
+	if !ok {
+		return 0, &errors.ServerError{Code: errors.ServerErrorRoomNotFound}
+	}
+	return len(m.roomAudiences[roomID]), nil
 }
