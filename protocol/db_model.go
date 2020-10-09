@@ -123,3 +123,13 @@ type LiveRoom struct {
 	// IMGroup 该直播间关联聊天群组。
 	IMChatRoom string `json:"imGroup" bson:"imGroup"`
 }
+
+// Ticket 上报工单信息。
+type Ticket struct {
+	ID           string    `json:"id" bson:"_id"`
+	Submitter    string    `json:"submitter" bson:"submitter"`
+	Content      string    `json:"content" bson:"content"`
+	SDKLogURL    string    `json:"sdkLog,omitempty" bson:"sdkLog,omitempty"`
+	SnapshotURLs []string  `json:"snapshots,omitempty" bson:"snapshots,omitempty"`
+	SubmitTime   time.Time `json:"submitTime" bson:"submitTime"`
+}

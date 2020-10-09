@@ -25,4 +25,6 @@ const (
 	RoomsCollection = "rooms"
 	// AudienceCollection (TODO)存储直播间观看者信息的表。
 	AudienceCollection = "audiences"
+	// TicketCollection 存储工单信息的表。
+	TicketCollection = "tickets"
 )
