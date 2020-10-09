@@ -83,8 +83,17 @@ func (m *mockAccount) UpdateAccount(xl *xlog.Logger, id string, account *protoco
 }
 
 // AccountLogin 模拟账号登录，返回token。
-func (m *mockAccount) AccountLogin(xl *xlog.Logger, id string) (token string, err error) {
-	return id + "#" + "login-token", nil
+func (m *mockAccount) AccountLogin(xl *xlog.Logger, id string) (user *protocol.ActiveUser, err error) {
+	for _, a := range m.accounts {
+		if a.ID == id {
+			return &protocol.ActiveUser{
+				ID:     id,
+				Token:  id + "#login-token",
+				Status: protocol.UserStatusIdle,
+			}, nil
+		}
+	}
+	return nil, &errors.ServerError{Code: errors.ServerErrorUserNotfound}
 }
 
 // AccountLogout 模拟账号退出登录。

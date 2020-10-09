@@ -50,7 +50,9 @@ type SMSLoginArgs struct {
 // LoginResponse 登录的返回结果。
 type LoginResponse struct {
 	UserInfo
-	Token string `json:"token"`
+	Token  string `json:"token"`
+	Status string `json:"status"`
+	Room   string `json:"room,omitempty"`
 }
 
 // UpdateProfileArgs 修改用户信息接口。

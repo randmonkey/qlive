@@ -32,7 +32,7 @@ type AccountInterface interface {
 	GetAccountByID(xl *xlog.Logger, id string) (*protocol.Account, error)
 	CreateAccount(xl *xlog.Logger, account *protocol.Account) error
 	UpdateAccount(xl *xlog.Logger, id string, account *protocol.Account) (*protocol.Account, error)
-	AccountLogin(xl *xlog.Logger, id string) (token string, err error)
+	AccountLogin(xl *xlog.Logger, id string) (user *protocol.ActiveUser, err error)
 	AccountLogout(xl *xlog.Logger, id string) error
 }
 
@@ -199,7 +199,7 @@ func (h *AccountHandler) LoginBySMS(c *gin.Context) {
 		}
 	}
 	// 更新该账号状态为已登录。
-	token, err := h.Account.AccountLogin(xl, account.ID)
+	user, err := h.Account.AccountLogin(xl, account.ID)
 	if err != nil {
 		serverErr, ok := err.(*errors.ServerError)
 		if ok && serverErr.Code == errors.ServerErrorUserLoggedin {
@@ -220,9 +220,11 @@ func (h *AccountHandler) LoginBySMS(c *gin.Context) {
 			Nickname: account.Nickname,
 			Gender:   account.Gender,
 		},
-		Token: token,
+		Token:  user.Token,
+		Status: string(user.Status),
+		Room:   user.Room,
 	}
-	c.SetCookie(protocol.LoginTokenKey, token, 0, "/", "qlive.qiniu.com", true, false)
+	c.SetCookie(protocol.LoginTokenKey, user.Token, 0, "/", "qlive.qiniu.com", true, false)
 	c.JSON(http.StatusOK, res)
 }
 

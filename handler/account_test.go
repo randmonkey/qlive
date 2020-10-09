@@ -83,7 +83,15 @@ func TestSendSMSCode(t *testing.T) {
 
 func TestLogin(t *testing.T) {
 	handler := &AccountHandler{
-		Account: &mockAccount{},
+		Account: &mockAccount{
+			accounts: []*protocol.Account{
+				{
+					PhoneNumber: "19999990002",
+					ID:          "user-1",
+					Nickname:    "user01",
+				},
+			},
+		},
 		SMSCode: &mockSMSCode{},
 	}
 
@@ -92,6 +100,7 @@ func TestLogin(t *testing.T) {
 		phoneNumber        string
 		smsCode            string
 		expectedStatusCode int
+		userID             string
 	}{
 		{
 			loginType:          "invalid",
@@ -102,6 +111,7 @@ func TestLogin(t *testing.T) {
 			phoneNumber:        "19999990002",
 			smsCode:            "123456",
 			expectedStatusCode: 200,
+			userID:             "user-1",
 		},
 		{
 			loginType:          "smscode",
@@ -133,6 +143,12 @@ func TestLogin(t *testing.T) {
 		// handler处理请求。
 		handler.Login(c)
 		assert.Equalf(t, testCase.expectedStatusCode, w.Code, "code is not the same as expected for test case %d", i)
+		if testCase.expectedStatusCode == http.StatusOK {
+			resp := protocol.LoginResponse{}
+			err = json.Unmarshal(w.Body.Bytes(), &resp)
+			assert.Nilf(t, err, "failed to read response for test case %d, error %v", i, err)
+			assert.Equalf(t, testCase.userID, resp.ID, "user ID is not same for test case %d", i)
+		}
 	}
 }
 
