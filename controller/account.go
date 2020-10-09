@@ -190,39 +190,40 @@ func (c *AccountController) UpdateActiveUser(xl *xlog.Logger, userID string, new
 }
 
 // AccountLogin 设置某个账号为已登录状态。
-func (c *AccountController) AccountLogin(xl *xlog.Logger, userID string) (token string, err error) {
+func (c *AccountController) AccountLogin(xl *xlog.Logger, userID string) (user *protocol.ActiveUser, err error) {
 	if xl == nil {
 		xl = c.xl
 	}
 	account, err := c.GetAccountByID(xl, userID)
 	if err != nil {
 		c.xl.Errorf("AccountLogin: failed to find account %s", userID)
-		return "", err
+		return nil, err
 	}
 	// 查看是否已经登录。
-	activeUserRecord := &protocol.ActiveUser{}
+	activeUser := &protocol.ActiveUser{
+		ID:       userID,
+		Nickname: account.Nickname,
+		Status:   protocol.UserStatusIdle,
+	}
 	err = c.activeUserColl.Find(context.Background(), map[string]interface{}{"_id": userID}).
-		One(activeUserRecord)
+		One(activeUser)
 	if err != nil {
 		if !qmgo.IsErrNoDocuments(err) {
 			c.xl.Errorf("failed to check logged in users in mongo,error %v", err)
-			return "", err
+			return nil, err
 		}
 	} else {
 		c.xl.Infof("user %s has been already logged in, the old session will be invalid", userID)
 	}
-	activeUserRecord.ID = userID
-	activeUserRecord.Nickname = account.Nickname
-	activeUserRecord.Status = protocol.UserStatusIdle
-	token = c.makeLoginToken(xl, account)
-	activeUserRecord.Token = token
+	// generate token.
+	activeUser.Token = c.makeLoginToken(xl, account)
 	// update or insert login record.
-	_, err = c.activeUserColl.Upsert(context.Background(), bson.M{"_id": userID}, activeUserRecord)
+	_, err = c.activeUserColl.Upsert(context.Background(), bson.M{"_id": userID}, activeUser)
 	if err != nil {
 		xl.Errorf("failed to update or insert user login record, error %v", err)
-		return "", err
+		return nil, err
 	}
-	return token, nil
+	return activeUser, nil
 }
 
 func (c *AccountController) makeLoginToken(xl *xlog.Logger, account *protocol.Account) string {
