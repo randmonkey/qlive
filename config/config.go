@@ -74,6 +74,13 @@ type QiniuRTCConfig struct {
 	RoomTokenExpireSecond int `json:"room_token_expire_s"`
 }
 
+// QiniuStorageConfig 七牛对象存储服务配置。
+type QiniuStorageConfig struct {
+	KeyPair QiniuKeyPair `json:"key_pair"`
+	// Bucket 上传的文件所在的七牛对象存储bucket。
+	Bucket string `json:"bucket"`
+}
+
 // RongCloudIMConfig 融云IM服务配置。
 type RongCloudIMConfig struct {
 	AppKey    string `json:"app_key"`
@@ -101,12 +108,13 @@ type Config struct {
 	DebugLevel int    `json:"debug_level"`
 	ListenAddr string `json:"listen_addr"`
 
-	WsConf     *WebSocketConf    `json:"websocket_conf"`
-	Mongo      *MongoConfig      `json:"mongo"`
-	SMS        *SMSConfig        `json:"sms"`
-	RTC        *QiniuRTCConfig   `json:"rtc"`
-	IM         *IMConfig         `json:"im"`
-	Prometheus *PrometheusConfig `json:"prometheus"`
+	WsConf     *WebSocketConf      `json:"websocket_conf"`
+	Mongo      *MongoConfig        `json:"mongo"`
+	SMS        *SMSConfig          `json:"sms"`
+	RTC        *QiniuRTCConfig     `json:"rtc"`
+	Storage    *QiniuStorageConfig `json:"storage"`
+	IM         *IMConfig           `json:"im"`
+	Prometheus *PrometheusConfig   `json:"prometheus"`
 }
 
 // NewSample 返回样例配置。
@@ -142,6 +150,13 @@ func NewSample() *Config {
 			PublishHost:           "localhost:1935",
 			PublishHub:            "test",
 			RoomTokenExpireSecond: 60,
+		},
+		Storage: &QiniuStorageConfig{
+			KeyPair: QiniuKeyPair{
+				AccessKey: os.Getenv("QINIU_ACCESS_KEY"),
+				SecretKey: os.Getenv("QINIU_SECRET_KEY"),
+			},
+			Bucket: os.Getenv("QINIU_STORAGE_BUCKET"),
 		},
 		IM: &IMConfig{
 			Provider: "test",

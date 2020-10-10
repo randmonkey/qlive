@@ -181,3 +181,15 @@ type IMTokenResponse struct {
 	UserID string `json:"userID"`
 	Token  string `json:"token"`
 }
+
+// GetUploadTokenArgs 获取上传文件token的参数。
+type GetUploadTokenArgs struct {
+	Filename      string `json:"filename"`      // 上传资源的文件名（key）
+	ExpireSeconds int    `json:"expireSeconds"` // token的有效期（单位为秒），默认为3600（1小时）。
+}
+
+// GetUploadTokenResponse 获取上传文件token的结果。
+type GetUploadTokenResponse struct {
+	Token    string `json:"token"`
+	ExpireAt int64  `json:"expireAt"` // token过期时间，以秒为单位的时间戳。
+}
