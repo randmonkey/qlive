@@ -297,3 +297,9 @@ func (m *mockRoom) GetAudienceNumber(xl *xlog.Logger, roomID string) (int, error
 	}
 	return len(m.roomAudiences[roomID]), nil
 }
+
+type mockUpload struct{}
+
+func (m *mockUpload) GetUploadToken(xl *xlog.Logger, userID string, filename string, expireSeconds int) (string, error) {
+	return "upload-token:" + userID + ":" + filename, nil
+}

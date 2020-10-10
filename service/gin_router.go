@@ -107,6 +107,14 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		IMService: imController,
 	}
 
+	uploadController, err := controller.NewQiniuUploadController(conf.Storage, nil)
+	if err != nil {
+		return nil, err
+	}
+	uploadHandler := &handler.UploadHandler{
+		Upload: uploadController,
+	}
+
 	promHandler := handler.NewPromHandler(conf.Prometheus, nil)
 
 	v1 := router.Group("/v1")
@@ -148,6 +156,9 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		// IM API：生成IM token。
 		v1.POST("im_user_token", authHandler.Authenticate, imHandler.GetUserToken, handler.SetMetrics)
 		v1.POST("im_user_token/", authHandler.Authenticate, imHandler.GetUserToken, handler.SetMetrics)
+		// 上传API：生成上传文件token。
+		v1.POST("upload/token", authHandler.Authenticate, uploadHandler.GetUploadToken, handler.SetMetrics)
+		v1.POST("upload/token/", authHandler.Authenticate, uploadHandler.GetUploadToken, handler.SetMetrics)
 	}
 
 	metricsPath := conf.Prometheus.MetricsPath
