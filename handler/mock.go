@@ -307,16 +307,16 @@ func (m *mockUpload) GetUploadToken(xl *xlog.Logger, userID string, filename str
 	return "upload-token:" + userID + ":" + filename, nil
 }
 
-type mockTicket struct {
-	tickets []*protocol.Ticket
+type mockFeedback struct {
+	feedbacks []*protocol.Feedback
 }
 
-func (m *mockTicket) SubmitTicket(xl *xlog.Logger, ticket *protocol.Ticket) (string, error) {
+func (m *mockFeedback) SendFeedback(xl *xlog.Logger, feedback *protocol.Feedback) (string, error) {
 	now := time.Now()
-	ticket.ID = "ticket-" + strconv.FormatInt(now.UnixNano(), 36)
-	if ticket.SubmitTime.IsZero() {
-		ticket.SubmitTime = now
+	feedback.ID = "feedback-" + strconv.FormatInt(now.UnixNano(), 36)
+	if feedback.SendTime.IsZero() {
+		feedback.SendTime = now
 	}
-	m.tickets = append(m.tickets, ticket)
-	return ticket.ID, nil
+	m.feedbacks = append(m.feedbacks, feedback)
+	return feedback.ID, nil
 }

@@ -28,7 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSubmitTicket(t *testing.T) {
+func TestSendFeedback(t *testing.T) {
 	testCases := []struct {
 		userID       string
 		content      string
@@ -44,17 +44,17 @@ func TestSubmitTicket(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		mockTicket := &mockTicket{}
-		handler := &TicketHandler{
-			Ticket: mockTicket,
+		mockFeedback := &mockFeedback{}
+		handler := &FeedbackHandler{
+			Feedback: mockFeedback,
 		}
 		// intitialize test recorder and context
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
-		c.Set(protocol.XLogKey, xlog.New(fmt.Sprintf("test-submit-ticket-%d", i)))
+		c.Set(protocol.XLogKey, xlog.New(fmt.Sprintf("test-send-feedback-%d", i)))
 		c.Set(protocol.UserIDContextKey, testCase.userID)
 		// build request
-		args := &protocol.SubmitTicketArgs{
+		args := &protocol.SendFeedbackArgs{
 			Content:      testCase.content,
 			SDKLogURL:    testCase.sdkLogURL,
 			SnapshotURLs: testCase.snapshotURLs,
@@ -62,21 +62,21 @@ func TestSubmitTicket(t *testing.T) {
 		buf, err := json.Marshal(args)
 		assert.Nilf(t, err, "failed to build request body for case %d, error %v", i, err)
 		bodyReader := bytes.NewBuffer(buf)
-		req, err := http.NewRequest("POST", "/v1/tickets", bodyReader)
+		req, err := http.NewRequest("POST", "/v1/feedbacks", bodyReader)
 		assert.Nilf(t, err, "failed to craete request for case %d, error %v", i, err)
 		c.Request = req
 
-		handler.SubmitTicket(c)
+		handler.SendFeedback(c)
 		assert.Equalf(t, http.StatusOK, w.Code, "test case %d got non-200 status code: %d", i, w.Code)
 
-		res := &protocol.SubmitTicketResponse{}
+		res := &protocol.SendFeedbackResponse{}
 		err = json.Unmarshal(w.Body.Bytes(), res)
 		assert.Nilf(t, err, "failed to read response for test case %d,error %v", i, err)
-		// check tickets stored in mockTicket
-		id := res.TicketID
-		assert.Lenf(t, mockTicket.tickets, 1, "test case %d: should store 1 ticket", i)
-		storedTicket := mockTicket.tickets[0]
-		assert.Equalf(t, id, storedTicket.ID, "test case %d: ticket ID does not match", i)
-		assert.Equalf(t, testCase.userID, storedTicket.Submitter, "test case %d: submitter should be the same as expected", i)
+		// check feedbacks stored in mockFeedback
+		id := res.FeedbackID
+		assert.Lenf(t, mockFeedback.feedbacks, 1, "test case %d: should store 1 feedback message", i)
+		storedFeedback := mockFeedback.feedbacks[0]
+		assert.Equalf(t, id, storedFeedback.ID, "test case %d: feedback ID does not match", i)
+		assert.Equalf(t, testCase.userID, storedFeedback.Sender, "test case %d: sender should be the same as expected", i)
 	}
 }

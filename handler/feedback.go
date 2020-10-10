@@ -25,32 +25,32 @@ import (
 	"github.com/qrtc/qlive/protocol"
 )
 
-// TicketInterface 工单接口。
-type TicketInterface interface {
-	SubmitTicket(xl *xlog.Logger, ticket *protocol.Ticket) (ticketID string, err error)
+// FeedbackInterface 反馈消息接口。
+type FeedbackInterface interface {
+	SendFeedback(xl *xlog.Logger, feedback *protocol.Feedback) (feedbackID string, err error)
 }
 
-// TicketHandler 处理工单相关接口。
-type TicketHandler struct {
-	Ticket TicketInterface
+// FeedbackHandler 处理反馈消息相关API。
+type FeedbackHandler struct {
+	Feedback FeedbackInterface
 }
 
-// SubmitTicket 提交工单。
-// @Tags qlive api ticket
-// @ID submit-ticket
-// @Summary submit a ticket
-// @Description submit a ticket if user has any problem or advice
+// SendFeedback 提交反馈消息。
+// @Tags qlive api feedback
+// @ID send-feedback
+// @Summary send a feedback message
+// @Description send a feedback message if user has any problem or advice
 // @Accept  json
 // @Produce  json
-// @Success 200 {object} protocol.SubmitTicketResponse
+// @Success 200 {object} protocol.SendFeedbackResponse
 // @Failure 400 {object} errors.HTTPError
-// @Router /tickets [post]
-func (h *TicketHandler) SubmitTicket(c *gin.Context) {
+// @Router /feedbacks [post]
+func (h *FeedbackHandler) SendFeedback(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
 	requestID := xl.ReqId
 
 	userID := c.GetString(protocol.UserIDContextKey)
-	args := protocol.SubmitTicketArgs{}
+	args := protocol.SendFeedbackArgs{}
 	err := c.BindJSON(&args)
 	if err != nil {
 		xl.Infof("invalid args in body, error %v", err)
@@ -58,20 +58,20 @@ func (h *TicketHandler) SubmitTicket(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, httpErr)
 		return
 	}
-	ticket := &protocol.Ticket{
-		Submitter:    userID,
+	feedback := &protocol.Feedback{
+		Sender:       userID,
 		Content:      args.Content,
 		SDKLogURL:    args.SDKLogURL,
 		SnapshotURLs: args.SnapshotURLs,
-		SubmitTime:   time.Now(),
+		SendTime:     time.Now(),
 	}
-	id, err := h.Ticket.SubmitTicket(xl, ticket)
+	id, err := h.Feedback.SendFeedback(xl, feedback)
 	if err != nil {
-		xl.Errorf("failed to submit ticket, error %v", err)
-		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID).WithMessage("failed to submit ticket")
+		xl.Errorf("failed to send feedback, error %v", err)
+		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID).WithMessage("failed to send feedbacks")
 		c.JSON(http.StatusInternalServerError, httpErr)
 		return
 	}
-	resp := &protocol.SubmitTicketResponse{TicketID: id}
+	resp := &protocol.SendFeedbackResponse{FeedbackID: id}
 	c.JSON(http.StatusOK, resp)
 }

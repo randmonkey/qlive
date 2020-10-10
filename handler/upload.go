@@ -48,7 +48,7 @@ const DefaultUploadTokenExpireSeconds = 3600
 // @Produce  json
 // @Success 200 {object} protocol.GetUploadTokenResponse
 // @Failure 400 {object} errors.HTTPError
-// @Router /tickets [post]
+// @Router /feedbacks [post]
 func (h *UploadHandler) GetUploadToken(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
 	requestID := xl.ReqId
@@ -70,7 +70,7 @@ func (h *UploadHandler) GetUploadToken(c *gin.Context) {
 	token, err := h.Upload.GetUploadToken(xl, userID, args.Filename, args.ExpireSeconds)
 	if err != nil {
 		xl.Errorf("failed to get upload token, error %v", err)
-		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID).WithMessage("failed to submit ticket")
+		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID).WithMessage("failed to send feedback")
 		c.JSON(http.StatusInternalServerError, httpErr)
 		return
 	}

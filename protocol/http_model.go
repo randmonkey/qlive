@@ -194,14 +194,14 @@ type GetUploadTokenResponse struct {
 	ExpireAt int64  `json:"expireAt"` // token过期时间，以秒为单位的时间戳。
 }
 
-// SubmitTicketArgs 上报工单的参数。
-type SubmitTicketArgs struct {
+// SendFeedbackArgs 发送反馈信息的参数。
+type SendFeedbackArgs struct {
 	Content      string   `json:"content"`             // 正文
 	SDKLogURL    string   `json:"sdkLog,omitempty"`    // SDK 日志地址
 	SnapshotURLs []string `json:"snapshots,omitempty"` // 相关截图地址
 }
 
-// SubmitTicketResponse 上报工单成功后的回应。
-type SubmitTicketResponse struct {
-	TicketID string `json:"ticketID"`
+// SendFeedbackResponse 发送反馈信息成功后的回应。
+type SendFeedbackResponse struct {
+	FeedbackID string `json:"feedbackID"`
 }

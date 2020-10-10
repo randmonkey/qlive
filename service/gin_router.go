@@ -115,12 +115,12 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		Upload: uploadController,
 	}
 
-	ticketController, err := controller.NewTicketController(conf.Mongo.URI, conf.Mongo.Database, nil)
+	feedbackController, err := controller.NewFeedbackController(conf.Mongo.URI, conf.Mongo.Database, nil)
 	if err != nil {
 		return nil, err
 	}
-	ticketHandler := &handler.TicketHandler{
-		Ticket: ticketController,
+	feedbackHandler := &handler.FeedbackHandler{
+		Feedback: feedbackController,
 	}
 
 	promHandler := handler.NewPromHandler(conf.Prometheus, nil)
@@ -167,10 +167,9 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		// 上传API：生成上传文件token。
 		v1.POST("upload/token", authHandler.Authenticate, uploadHandler.GetUploadToken, handler.SetMetrics)
 		v1.POST("upload/token/", authHandler.Authenticate, uploadHandler.GetUploadToken, handler.SetMetrics)
-
-		// 工单API：上报工单。
-		v1.POST("tickets", authHandler.Authenticate, ticketHandler.SubmitTicket, handler.SetMetrics)
-		v1.POST("tickets/", authHandler.Authenticate, ticketHandler.SubmitTicket, handler.SetMetrics)
+		// 反馈问题API：发送反馈。
+		v1.POST("feedbacks", authHandler.Authenticate, feedbackHandler.SendFeedback, handler.SetMetrics)
+		v1.POST("feedbacks/", authHandler.Authenticate, feedbackHandler.SendFeedback, handler.SetMetrics)
 	}
 
 	metricsPath := conf.Prometheus.MetricsPath

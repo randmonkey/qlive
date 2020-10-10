@@ -124,12 +124,18 @@ type LiveRoom struct {
 	IMChatRoom string `json:"imGroup" bson:"imGroup"`
 }
 
-// Ticket 上报工单信息。
-type Ticket struct {
+// Feedback 反馈信息。
+type Feedback struct {
 	ID           string    `json:"id" bson:"_id"`
-	Submitter    string    `json:"submitter" bson:"submitter"`
+	Sender       string    `json:"sender" bson:"sender"`
 	Content      string    `json:"content" bson:"content"`
 	SDKLogURL    string    `json:"sdkLog,omitempty" bson:"sdkLog,omitempty"`
 	SnapshotURLs []string  `json:"snapshots,omitempty" bson:"snapshots,omitempty"`
-	SubmitTime   time.Time `json:"submitTime" bson:"submitTime"`
+	SendTime     time.Time `json:"sendTime" bson:"sendTime"`
+}
+
+// ObjectCounter 对象计数，用于生成自增的ID/序列号。
+type ObjectCounter struct {
+	ID             string `json:"id" bson:"_id"`
+	SequenceNumber int64  `json:"seq" bson:"seq"`
 }
