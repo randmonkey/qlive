@@ -179,7 +179,8 @@ func (c *FeedbackController) sendFeedbackByMail(feedback *protocol.Feedback) err
 	subject := fmt.Sprintf("互动直播反馈消息:消息ID %s", feedback.ID)
 	msg := fmt.Sprintf("互动直播反馈消息:消息ID %s\n", feedback.ID)
 	msg = msg + fmt.Sprintf("发送时间：%s\n", feedback.SendTime.Format("2006-01-02 15:04:05-0700"))
-	msg = msg + fmt.Sprintf("发送者ID： %s，手机号：%s\n", feedback.Sender, senderAccount.PhoneNumber)
+	msg = msg + fmt.Sprintf("发送者ID： %s\n", feedback.Sender)
+	msg = msg + fmt.Sprintf("发送者手机号：%s\n", senderAccount.PhoneNumber)
 	msg = msg + fmt.Sprintf("消息内容：%s\n", feedback.Content)
 	msg = msg + fmt.Sprintf("相关附件URL：%s\n", feedback.AttachementURL)
 	// generate message.
