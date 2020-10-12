@@ -25,4 +25,8 @@ const (
 	RoomsCollection = "rooms"
 	// AudienceCollection (TODO)存储直播间观看者信息的表。
 	AudienceCollection = "audiences"
+	// FeedbackCollection 存储反馈消息的表。
+	FeedbackCollection = "feedbacks"
+	// CounterCollection 存储各类对象编号的表，用于生成类自增的ID。
+	CounterCollection = "_counter"
 )

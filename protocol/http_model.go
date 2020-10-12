@@ -193,3 +193,14 @@ type GetUploadTokenResponse struct {
 	Token    string `json:"token"`
 	ExpireAt int64  `json:"expireAt"` // token过期时间，以秒为单位的时间戳。
 }
+
+// SendFeedbackArgs 发送反馈信息的参数。
+type SendFeedbackArgs struct {
+	Content       string `json:"content"`    // 正文
+	AttachmentURL string `json:"attachment"` // 附件
+}
+
+// SendFeedbackResponse 发送反馈信息成功后的回应。
+type SendFeedbackResponse struct {
+	FeedbackID string `json:"feedbackID"`
+}

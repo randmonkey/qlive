@@ -16,10 +16,13 @@ package handler
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/qiniu/x/xlog"
+
 	"github.com/qrtc/qlive/errors"
 	"github.com/qrtc/qlive/protocol"
 )
@@ -302,4 +305,18 @@ type mockUpload struct{}
 
 func (m *mockUpload) GetUploadToken(xl *xlog.Logger, userID string, filename string, expireSeconds int) (string, error) {
 	return "upload-token:" + userID + ":" + filename, nil
+}
+
+type mockFeedback struct {
+	feedbacks []*protocol.Feedback
+}
+
+func (m *mockFeedback) SendFeedback(xl *xlog.Logger, feedback *protocol.Feedback) (string, error) {
+	now := time.Now()
+	feedback.ID = "feedback-" + strconv.FormatInt(now.UnixNano(), 36)
+	if feedback.SendTime.IsZero() {
+		feedback.SendTime = now
+	}
+	m.feedbacks = append(m.feedbacks, feedback)
+	return feedback.ID, nil
 }

@@ -25,36 +25,32 @@ import (
 	"github.com/qrtc/qlive/protocol"
 )
 
-// UploadService 提供文件上传服务。
-type UploadService interface {
-	// 获取上传文件token。
-	GetUploadToken(xl *xlog.Logger, userID string, filename string, expireSeconds int) (token string, err error)
+// FeedbackInterface 反馈消息接口。
+type FeedbackInterface interface {
+	SendFeedback(xl *xlog.Logger, feedback *protocol.Feedback) (feedbackID string, err error)
 }
 
-// UploadHandler 处理上传文件的API。
-type UploadHandler struct {
-	Upload UploadService
+// FeedbackHandler 处理反馈消息相关API。
+type FeedbackHandler struct {
+	Feedback FeedbackInterface
 }
 
-// DefaultUploadTokenExpireSeconds 默认的上传文件token过期时间，3600秒(1小时)。
-const DefaultUploadTokenExpireSeconds = 3600
-
-// GetUploadToken 获取token。
-// @Tags qlive api upload
-// @ID get-upload-token
-// @Summary get upload token
-// @Description get a token for calling upload service
+// SendFeedback 提交反馈消息。
+// @Tags qlive api feedback
+// @ID send-feedback
+// @Summary send a feedback message
+// @Description send a feedback message if user has any problem or advice
 // @Accept  json
 // @Produce  json
-// @Success 200 {object} protocol.GetUploadTokenResponse
+// @Success 200 {object} protocol.SendFeedbackResponse
 // @Failure 400 {object} errors.HTTPError
 // @Router /feedbacks [post]
-func (h *UploadHandler) GetUploadToken(c *gin.Context) {
+func (h *FeedbackHandler) SendFeedback(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
 	requestID := xl.ReqId
 
 	userID := c.GetString(protocol.UserIDContextKey)
-	args := protocol.GetUploadTokenArgs{}
+	args := protocol.SendFeedbackArgs{}
 	err := c.BindJSON(&args)
 	if err != nil {
 		xl.Infof("invalid args in body, error %v", err)
@@ -62,21 +58,19 @@ func (h *UploadHandler) GetUploadToken(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, httpErr)
 		return
 	}
-	tsSecond := time.Now().Unix()
-	expireSeconds := args.ExpireSeconds
-	if expireSeconds <= 0 {
-		expireSeconds = DefaultUploadTokenExpireSeconds
+	feedback := &protocol.Feedback{
+		Sender:         userID,
+		Content:        args.Content,
+		AttachementURL: args.AttachmentURL,
+		SendTime:       time.Now(),
 	}
-	token, err := h.Upload.GetUploadToken(xl, userID, args.Filename, args.ExpireSeconds)
+	id, err := h.Feedback.SendFeedback(xl, feedback)
 	if err != nil {
-		xl.Errorf("failed to get upload token, error %v", err)
-		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID).WithMessage("failed to send feedback")
+		xl.Errorf("failed to send feedback, error %v", err)
+		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID).WithMessage("failed to send feedbacks")
 		c.JSON(http.StatusInternalServerError, httpErr)
 		return
 	}
-	resp := &protocol.GetUploadTokenResponse{
-		Token:    token,
-		ExpireAt: tsSecond + int64(expireSeconds),
-	}
+	resp := &protocol.SendFeedbackResponse{FeedbackID: id}
 	c.JSON(http.StatusOK, resp)
 }
