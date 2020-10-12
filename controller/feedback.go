@@ -16,6 +16,7 @@ package controller
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"strconv"
 	"time"
@@ -24,7 +25,9 @@ import (
 	qmgoOpts "github.com/qiniu/qmgo/options"
 	"github.com/qiniu/x/xlog"
 	"go.mongodb.org/mongo-driver/bson"
+	"gopkg.in/gomail.v2"
 
+	"github.com/qrtc/qlive/config"
 	"github.com/qrtc/qlive/protocol"
 )
 
@@ -33,6 +36,8 @@ type FeedbackController struct {
 	mongoClient  *qmgo.Client
 	feedbackColl *qmgo.Collection
 	counterColl  *qmgo.Collection
+	accountColl  *qmgo.Collection
+	mailConfig   *config.MailConfig
 	processQueue chan *protocol.Feedback
 	xl           *xlog.Logger
 }
@@ -43,7 +48,7 @@ const (
 )
 
 // NewFeedbackController 创建反馈消息控制器。
-func NewFeedbackController(mongoURI string, database string, xl *xlog.Logger) (*FeedbackController, error) {
+func NewFeedbackController(mongoURI string, database string, mailConf *config.MailConfig, xl *xlog.Logger) (*FeedbackController, error) {
 	if xl == nil {
 		xl = xlog.New("qlive-feedback-controller")
 	}
@@ -57,6 +62,7 @@ func NewFeedbackController(mongoURI string, database string, xl *xlog.Logger) (*
 	}
 	feedbackColl := mongoClient.Database(database).Collection(FeedbackCollection)
 	counterColl := mongoClient.Database(database).Collection(CounterCollection)
+	accountColl := mongoClient.Database(database).Collection(AccountCollection)
 	feedbackCounter := &protocol.ObjectCounter{
 		ID: FeedbackObjectName,
 	}
@@ -79,6 +85,8 @@ func NewFeedbackController(mongoURI string, database string, xl *xlog.Logger) (*
 		mongoClient:  mongoClient,
 		feedbackColl: feedbackColl,
 		counterColl:  counterColl,
+		accountColl:  accountColl,
+		mailConfig:   mailConf,
 		processQueue: make(chan *protocol.Feedback, FeedbackProcessQueueLength),
 		xl:           xl,
 	}
@@ -149,8 +157,43 @@ func (c *FeedbackController) ProcessFeedbacks() {
 	for {
 		select {
 		case feedback := <-c.processQueue:
-			c.xl.Infof("got feedback message %s from %s", feedback.ID, feedback.Sender)
-			// TODO：进行进一步的处理，如发送邮件等
+			c.xl.Debugf("got feedback message %s from %s", feedback.ID, feedback.Sender)
+			if c.mailConfig != nil && c.mailConfig.Enabled {
+				c.xl.Debugf("send feedback message by email")
+				err := c.sendFeedbackByMail(feedback)
+				if err != nil {
+					c.xl.Warnf("failed to send feed back by email,error %v", err)
+				}
+			}
 		}
 	}
+}
+
+func (c *FeedbackController) sendFeedbackByMail(feedback *protocol.Feedback) error {
+	senderAccount := &protocol.Account{}
+	err := c.accountColl.Find(context.Background(), bson.M{"_id": feedback.Sender}).One(senderAccount)
+	if err != nil {
+		c.xl.Warnf("failed to get account info of sender %s", feedback.Sender)
+	}
+	// make subject and mail body.
+	subject := fmt.Sprintf("互动直播反馈消息:消息ID %s", feedback.ID)
+	msg := fmt.Sprintf("互动直播反馈消息:消息ID %s\n", feedback.ID)
+	msg = msg + fmt.Sprintf("发送时间：%s\n", feedback.SendTime.Format("2006-01-02 15:04:05-0700"))
+	msg = msg + fmt.Sprintf("发送者ID： %s，手机号：%s\n", feedback.Sender, senderAccount.PhoneNumber)
+	msg = msg + fmt.Sprintf("消息内容：%s\n", feedback.Content)
+	msg = msg + fmt.Sprintf("相关附件URL：%s\n", feedback.AttachementURL)
+	// generate message.
+	d := gomail.NewDialer(c.mailConfig.SMTPHost, c.mailConfig.SMTPPort, c.mailConfig.Username, c.mailConfig.Password)
+	d.TLSConfig = &tls.Config{InsecureSkipVerify: true}
+	m := gomail.NewMessage()
+	m.SetHeader("From", c.mailConfig.From)
+	m.SetHeader("To", c.mailConfig.To...)
+	m.SetHeader("Subject", subject)
+	m.SetBody("text/plain", msg)
+	// send email.
+	if err := d.DialAndSend(m); err != nil {
+		c.xl.Warnf("send feedback %s by email failed: error %+v", feedback.ID, err)
+		return err
+	}
+	return nil
 }

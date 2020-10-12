@@ -196,9 +196,8 @@ type GetUploadTokenResponse struct {
 
 // SendFeedbackArgs 发送反馈信息的参数。
 type SendFeedbackArgs struct {
-	Content      string   `json:"content"`             // 正文
-	SDKLogURL    string   `json:"sdkLog,omitempty"`    // SDK 日志地址
-	SnapshotURLs []string `json:"snapshots,omitempty"` // 相关截图地址
+	Content       string `json:"content"`    // 正文
+	AttachmentURL string `json:"attachment"` // 附件
 }
 
 // SendFeedbackResponse 发送反馈信息成功后的回应。

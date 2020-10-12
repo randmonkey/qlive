@@ -59,11 +59,10 @@ func (h *FeedbackHandler) SendFeedback(c *gin.Context) {
 		return
 	}
 	feedback := &protocol.Feedback{
-		Sender:       userID,
-		Content:      args.Content,
-		SDKLogURL:    args.SDKLogURL,
-		SnapshotURLs: args.SnapshotURLs,
-		SendTime:     time.Now(),
+		Sender:         userID,
+		Content:        args.Content,
+		AttachementURL: args.AttachmentURL,
+		SendTime:       time.Now(),
 	}
 	id, err := h.Feedback.SendFeedback(xl, feedback)
 	if err != nil {

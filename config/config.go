@@ -56,6 +56,17 @@ type QiniuSMSConfig struct {
 	TemplateID  string       `json:"template_id"`
 }
 
+// MailConfig 发送邮件的配置。
+type MailConfig struct {
+	Enabled  bool     `json:"enabled"`
+	SMTPHost string   `json:"smtp_host"`
+	SMTPPort int      `json:"smtp_port"`
+	From     string   `json:"from"`
+	Username string   `json:"username"`
+	Password string   `json:"password"`
+	To       []string `json:"to"`
+}
+
 // SMSConfig 短信服务配置。
 type SMSConfig struct {
 	Provider string          `json:"provider"`
@@ -108,13 +119,14 @@ type Config struct {
 	DebugLevel int    `json:"debug_level"`
 	ListenAddr string `json:"listen_addr"`
 
-	WsConf     *WebSocketConf      `json:"websocket_conf"`
-	Mongo      *MongoConfig        `json:"mongo"`
-	SMS        *SMSConfig          `json:"sms"`
-	RTC        *QiniuRTCConfig     `json:"rtc"`
-	Storage    *QiniuStorageConfig `json:"storage"`
-	IM         *IMConfig           `json:"im"`
-	Prometheus *PrometheusConfig   `json:"prometheus"`
+	WsConf       *WebSocketConf      `json:"websocket_conf"`
+	Mongo        *MongoConfig        `json:"mongo"`
+	SMS          *SMSConfig          `json:"sms"`
+	RTC          *QiniuRTCConfig     `json:"rtc"`
+	Storage      *QiniuStorageConfig `json:"storage"`
+	IM           *IMConfig           `json:"im"`
+	FeedbackMail *MailConfig         `json:"feedback_mail"`
+	Prometheus   *PrometheusConfig   `json:"prometheus"`
 }
 
 // NewSample 返回样例配置。

@@ -115,7 +115,7 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		Upload: uploadController,
 	}
 
-	feedbackController, err := controller.NewFeedbackController(conf.Mongo.URI, conf.Mongo.Database, nil)
+	feedbackController, err := controller.NewFeedbackController(conf.Mongo.URI, conf.Mongo.Database, conf.FeedbackMail, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -30,16 +30,14 @@ import (
 
 func TestSendFeedback(t *testing.T) {
 	testCases := []struct {
-		userID       string
-		content      string
-		sdkLogURL    string
-		snapshotURLs []string
+		userID        string
+		content       string
+		attachmentURL string
 	}{
 		{
-			userID:       "user-1",
-			content:      "problem",
-			sdkLogURL:    "example.com/log1",
-			snapshotURLs: []string{"exmaple.com/1.jpg", "example.com/2.jpg"},
+			userID:        "user-1",
+			content:       "problem",
+			attachmentURL: "example.com/feedback1.zip",
 		},
 	}
 
@@ -55,9 +53,8 @@ func TestSendFeedback(t *testing.T) {
 		c.Set(protocol.UserIDContextKey, testCase.userID)
 		// build request
 		args := &protocol.SendFeedbackArgs{
-			Content:      testCase.content,
-			SDKLogURL:    testCase.sdkLogURL,
-			SnapshotURLs: testCase.snapshotURLs,
+			Content:       testCase.content,
+			AttachmentURL: testCase.attachmentURL,
 		}
 		buf, err := json.Marshal(args)
 		assert.Nilf(t, err, "failed to build request body for case %d, error %v", i, err)
