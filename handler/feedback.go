@@ -15,7 +15,10 @@
 package handler
 
 import (
+	"net"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -32,8 +35,14 @@ type FeedbackInterface interface {
 
 // FeedbackHandler 处理反馈消息相关API。
 type FeedbackHandler struct {
-	Feedback FeedbackInterface
+	Feedback            FeedbackInterface
+	AttachmentURLPrefix string
 }
+
+const (
+	// DomainRegexStr 域名的正则表达式。
+	DomainRegexStr = `^([a-zA-Z0-9_][a-zA-Z0-9_-]{0,62}){1}(\.[a-zA-Z0-9_]{1}[a-zA-Z0-9_-]{0,62})+$`
+)
 
 // SendFeedback 提交反馈消息。
 // @Tags qlive api feedback
@@ -58,10 +67,15 @@ func (h *FeedbackHandler) SendFeedback(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, httpErr)
 		return
 	}
+	attachmentURL := args.AttachmentURL
+	if h.shouldAddURLPrefix(attachmentURL) {
+		attachmentURL = h.AttachmentURLPrefix + "/" + attachmentURL
+	}
+
 	feedback := &protocol.Feedback{
 		Sender:         userID,
 		Content:        args.Content,
-		AttachementURL: args.AttachmentURL,
+		AttachementURL: attachmentURL,
 		SendTime:       time.Now(),
 	}
 	id, err := h.Feedback.SendFeedback(xl, feedback)
@@ -73,4 +87,31 @@ func (h *FeedbackHandler) SendFeedback(c *gin.Context) {
 	}
 	resp := &protocol.SendFeedbackResponse{FeedbackID: id}
 	c.JSON(http.StatusOK, resp)
+}
+
+func (h *FeedbackHandler) shouldAddURLPrefix(inputURL string) bool {
+	if strings.HasPrefix(inputURL, "http://") {
+		inputURL = strings.TrimPrefix(inputURL, "http://")
+	} else if strings.HasPrefix(inputURL, "https://") {
+		inputURL = strings.TrimPrefix(inputURL, "https://")
+	}
+	parts := strings.SplitN(inputURL, "/", 2)
+	// does not have '/', return true
+	if len(parts) < 2 {
+		return true
+	}
+	// begin with a domain, e.g: example.com
+	domainRegex := regexp.MustCompile(DomainRegexStr)
+	if domainRegex.MatchString(parts[0]) {
+		return false
+	}
+	// begin with an IP, e.g: 127.0.0.1
+	if ip := net.ParseIP(parts[0]); ip != nil {
+		return false
+	}
+	// begin with IP:port or domain:port, e.g: 127.0.0.1:8080
+	if _, _, err := net.SplitHostPort(parts[0]); err == nil {
+		return false
+	}
+	return true
 }

@@ -30,21 +30,48 @@ import (
 
 func TestSendFeedback(t *testing.T) {
 	testCases := []struct {
-		userID        string
-		content       string
-		attachmentURL string
+		userID              string
+		content             string
+		attachmentURL       string
+		storedAttachmentURL string
 	}{
 		{
-			userID:        "user-1",
-			content:       "problem",
-			attachmentURL: "example.com/feedback1.zip",
+			userID:              "user-1",
+			content:             "problem",
+			attachmentURL:       "example.com/feedback1.zip",
+			storedAttachmentURL: "example.com/feedback1.zip",
+		},
+		{
+			userID:              "user-2",
+			content:             "problem2",
+			attachmentURL:       "feedback2.zip",
+			storedAttachmentURL: "example.com/feedback2.zip",
+		},
+		{
+			userID:              "user-3",
+			content:             "problem3",
+			attachmentURL:       "http://example.com:8080/feedback3.zip",
+			storedAttachmentURL: "http://example.com:8080/feedback3.zip",
+		},
+		{
+			userID:              "user-4",
+			content:             "problem4",
+			attachmentURL:       "127.0.0.1/feedback4.zip",
+			storedAttachmentURL: "127.0.0.1/feedback4.zip",
+		},
+		{
+			userID:              "user-5",
+			content:             "problem5",
+			attachmentURL:       "127.0.0.1:8080/feedback5.zip",
+			storedAttachmentURL: "127.0.0.1:8080/feedback5.zip",
 		},
 	}
 
 	for i, testCase := range testCases {
 		mockFeedback := &mockFeedback{}
 		handler := &FeedbackHandler{
-			Feedback: mockFeedback,
+			Feedback:            mockFeedback,
+			AttachmentURLPrefix: "example.com",
 		}
 		// intitialize test recorder and context
 		w := httptest.NewRecorder()
@@ -75,5 +102,6 @@ func TestSendFeedback(t *testing.T) {
 		storedFeedback := mockFeedback.feedbacks[0]
 		assert.Equalf(t, id, storedFeedback.ID, "test case %d: feedback ID does not match", i)
 		assert.Equalf(t, testCase.userID, storedFeedback.Sender, "test case %d: sender should be the same as expected", i)
+		assert.Equalf(t, testCase.storedAttachmentURL, storedFeedback.AttachementURL, "test case %d: attachment URL should be the same as expected", i)
 	}
 }

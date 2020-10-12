@@ -120,7 +120,8 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		return nil, err
 	}
 	feedbackHandler := &handler.FeedbackHandler{
-		Feedback: feedbackController,
+		Feedback:            feedbackController,
+		AttachmentURLPrefix: conf.Storage.URLPrefix,
 	}
 
 	promHandler := handler.NewPromHandler(conf.Prometheus, nil)

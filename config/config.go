@@ -90,6 +90,8 @@ type QiniuStorageConfig struct {
 	KeyPair QiniuKeyPair `json:"key_pair"`
 	// Bucket 上传的文件所在的七牛对象存储bucket。
 	Bucket string `json:"bucket"`
+	// URLPrefix 上传的文件的下载URL前缀，一般为该bucket对应的默认域名。
+	URLPrefix string `json:"url_prefix"`
 }
 
 // RongCloudIMConfig 融云IM服务配置。
