@@ -43,8 +43,10 @@ type FeedbackController struct {
 }
 
 const (
-	FeedbackObjectName         = "feedback"
-	FeedbackProcessQueueLength = 16
+	FeedbackObjectName                 = "feedback"
+	FeedbackProcessQueueLength         = 16
+	DefaultSendMailRetryTimes          = 3
+	DefaultSendMailRetryIntervalSecond = 5
 )
 
 // NewFeedbackController 创建反馈消息控制器。
@@ -80,6 +82,13 @@ func NewFeedbackController(mongoURI string, database string, mailConf *config.Ma
 			xl.Errorf("failed to get counter for feedback, error %v", err)
 			return nil, err
 		}
+	}
+
+	if mailConf.RetryTimes == 0 {
+		mailConf.RetryTimes = DefaultSendMailRetryTimes
+	}
+	if mailConf.RetryIntervalSecond <= 0 {
+		mailConf.RetryIntervalSecond = DefaultSendMailRetryIntervalSecond
 	}
 	controller := &FeedbackController{
 		mongoClient:  mongoClient,
@@ -160,9 +169,20 @@ func (c *FeedbackController) ProcessFeedbacks() {
 			c.xl.Debugf("got feedback message %s from %s", feedback.ID, feedback.Sender)
 			if c.mailConfig != nil && c.mailConfig.Enabled {
 				c.xl.Debugf("send feedback message by email")
-				err := c.sendFeedbackByMail(feedback)
-				if err != nil {
-					c.xl.Warnf("failed to send feed back by email,error %v", err)
+				sendOK := false
+				for i := 0; i < c.mailConfig.RetryTimes; i++ {
+					err := c.sendFeedbackByMail(feedback)
+					if err != nil {
+						c.xl.Infof("failed to send feed back by email,retry time %d/%d,error %v", i, c.mailConfig.RetryTimes, err)
+						time.Sleep(time.Duration(c.mailConfig.RetryIntervalSecond) * time.Second)
+					} else {
+						c.xl.Infof("send feedback message %s by email done", feedback.ID)
+						sendOK = true
+						break
+					}
+				}
+				if !sendOK {
+					c.xl.Warnf("send feedback message %s by email failed", feedback.ID)
 				}
 			}
 		}
