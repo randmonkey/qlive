@@ -58,13 +58,15 @@ type QiniuSMSConfig struct {
 
 // MailConfig 发送邮件的配置。
 type MailConfig struct {
-	Enabled  bool     `json:"enabled"`
-	SMTPHost string   `json:"smtp_host"`
-	SMTPPort int      `json:"smtp_port"`
-	From     string   `json:"from"`
-	Username string   `json:"username"`
-	Password string   `json:"password"`
-	To       []string `json:"to"`
+	Enabled             bool     `json:"enabled"`
+	SMTPHost            string   `json:"smtp_host"`
+	SMTPPort            int      `json:"smtp_port"`
+	From                string   `json:"from"`
+	Username            string   `json:"username"`
+	Password            string   `json:"password"`
+	To                  []string `json:"to"`
+	RetryTimes          int      `json:"retry_times"`
+	RetryIntervalSecond int      `json:"retry_interval_s"`
 }
 
 // SMSConfig 短信服务配置。
