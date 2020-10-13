@@ -71,8 +71,10 @@ type MailConfig struct {
 
 // SMSConfig 短信服务配置。
 type SMSConfig struct {
-	Provider string          `json:"provider"`
-	QiniuSMS *QiniuSMSConfig `json:"qiniu_sms"`
+	Provider string `json:"provider"`
+	// FixedCodes 固定的手机号->验证码组合，供测试用。
+	FixedCodes map[string]string `json:"fixed_codes,omitempty"`
+	QiniuSMS   *QiniuSMSConfig   `json:"qiniu_sms"`
 }
 
 // QiniuRTCConfig 七牛RTC服务配置。
