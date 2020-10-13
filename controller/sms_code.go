@@ -55,7 +55,9 @@ type SMSCodeController struct {
 	validateTimeout time.Duration
 	expireTimeout   time.Duration
 	randSource      rand.Source
-	xl              *xlog.Logger
+	// fixedCodes 固定的手机号与验证码组合，供测试用。
+	fixedCodes map[string]string
+	xl         *xlog.Logger
 }
 
 // NewSMSCodeController 创建 SMSCodeController。
@@ -79,6 +81,7 @@ func NewSMSCodeController(mongoURI string, database string, smsConfig *config.SM
 		validateTimeout: SMSCodeDefaultValidateTimeout,
 		expireTimeout:   SMSCodeExpireTimeout,
 		randSource:      rand.NewSource(time.Now().UnixNano()),
+		fixedCodes:      smsConfig.FixedCodes,
 		xl:              xl,
 	}
 	// 创建短信发送器。
@@ -193,6 +196,13 @@ func (c *SMSCodeController) Send(xl *xlog.Logger, phoneNumber string) error {
 func (c *SMSCodeController) Validate(xl *xlog.Logger, phoneNumber string, code string) error {
 	if xl == nil {
 		xl = c.xl
+	}
+	// 处理固定验证码组合。
+	if c.fixedCodes != nil {
+		fixedCode, ok := c.fixedCodes[phoneNumber]
+		if ok && code == fixedCode {
+			return nil
+		}
 	}
 	now := time.Now()
 	filter := map[string]interface{}{
