@@ -68,7 +68,7 @@ func (h *FeedbackHandler) SendFeedback(c *gin.Context) {
 		return
 	}
 	attachmentURL := args.AttachmentURL
-	if h.shouldAddURLPrefix(attachmentURL) {
+	if attachmentURL != "" && h.shouldAddURLPrefix(attachmentURL) {
 		attachmentURL = h.AttachmentURLPrefix + "/" + attachmentURL
 	}
 
@@ -90,6 +90,9 @@ func (h *FeedbackHandler) SendFeedback(c *gin.Context) {
 }
 
 func (h *FeedbackHandler) shouldAddURLPrefix(inputURL string) bool {
+	if inputURL == "" {
+		return false
+	}
 	if strings.HasPrefix(inputURL, "http://") {
 		inputURL = strings.TrimPrefix(inputURL, "http://")
 	} else if strings.HasPrefix(inputURL, "https://") {

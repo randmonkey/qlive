@@ -44,8 +44,8 @@ func TestSendFeedback(t *testing.T) {
 		{
 			userID:              "user-2",
 			content:             "problem2",
-			attachmentURL:       "feedback2.zip",
-			storedAttachmentURL: "example.com/feedback2.zip",
+			attachmentURL:       "aa/feedback2.zip",
+			storedAttachmentURL: "example.com/aa/feedback2.zip",
 		},
 		{
 			userID:              "user-3",
@@ -64,6 +64,12 @@ func TestSendFeedback(t *testing.T) {
 			content:             "problem5",
 			attachmentURL:       "127.0.0.1:8080/feedback5.zip",
 			storedAttachmentURL: "127.0.0.1:8080/feedback5.zip",
+		},
+		{
+			userID:              "user-6",
+			content:             "problem6",
+			attachmentURL:       "",
+			storedAttachmentURL: "",
 		},
 	}
 
