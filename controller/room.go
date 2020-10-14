@@ -16,6 +16,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"go.mongodb.org/mongo-driver/bson"
 
@@ -36,6 +37,7 @@ type RoomController struct {
 	mongoClient    *qmgo.Client
 	roomColl       *qmgo.Collection
 	activeUserColl *qmgo.Collection
+	pkRequestColl  *qmgo.Collection
 	// roomNumberLimit 最大的直播间数量。当直播间数量大于等于该数字时无法创建新的直播间，服务端返回503.
 	roomNumberLimit int
 	xl              *xlog.Logger
@@ -56,10 +58,12 @@ func NewRoomController(mongoURI string, database string, xl *xlog.Logger) (*Room
 	}
 	roomColl := mongoClient.Database(database).Collection(RoomsCollection)
 	activeUserColl := mongoClient.Database(database).Collection(ActiveUserCollection)
+	pkRequestColl := mongoClient.Database(database).Collection(PKRequestCollection)
 	return &RoomController{
 		mongoClient:     mongoClient,
 		roomColl:        roomColl,
 		activeUserColl:  activeUserColl,
+		pkRequestColl:   pkRequestColl,
 		roomNumberLimit: DefaultRoomNumberLimit,
 		xl:              xl,
 	}, nil
@@ -356,4 +360,38 @@ func (c *RoomController) GetAudienceNumber(xl *xlog.Logger, roomID string) (int,
 		return 0, err
 	}
 	return int(audienceCount), nil
+}
+
+// ProposePKRequest 提出PK请求。
+func (c *RoomController) ProposePKRequest(xl *xlog.Logger, proposerID string, receiverID string) error {
+	proposer := &protocol.ActiveUser{}
+	err := c.activeUserColl.Find(context.Background(), bson.M{"_id": proposerID}).One(proposer)
+	if err != nil {
+		if qmgo.IsErrNoDocuments(err) {
+			xl.Infof("PK request proposer %s not found in active users", proposerID)
+		} else {
+			xl.Errorf("failed to get PK request proposer %s", proposerID)
+		}
+		return &errors.ServerError{Code: errors.ServerErrorUserNotfound, Summary: fmt.Sprintf("proposer %s not found", proposerID)}
+	}
+	receiver := &protocol.ActiveUser{}
+	err = c.activeUserColl.Find(context.Background(), bson.M{"_id": receiverID}).One(receiver)
+	if err != nil {
+		if qmgo.IsErrNoDocuments(err) {
+			xl.Infof("PK request receiver %s not found in active users", receiverID)
+		} else {
+			xl.Errorf("failed to get PK request receiver %s", receiverID)
+		}
+		return &errors.ServerError{Code: errors.ServerErrorUserNotfound, Summary: fmt.Sprintf("receiver %s not found", receiverID)}
+	}
+	proposerRoom := &protocol.LiveRoom{}
+	err = c.roomColl.Find(context.Background(), bson.M{"creator": proposerID}).One(proposerID)
+	if err != nil {
+
+	}
+	receiverRoom := &protocol.LiveRoom{}
+	err = c.roomColl.Find(context.Background(), bson.M{"creator": receiverID}).One(receiverRoom)
+	if err != nil {
+
+	}
 }

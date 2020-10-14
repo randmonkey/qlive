@@ -67,6 +67,12 @@ type RoomInterface interface {
 	UpdateRoom(xl *xlog.Logger, id string, room *protocol.LiveRoom) (*protocol.LiveRoom, error)
 	// GetAudienceNumber 获取房间内观众人数。
 	GetAudienceNumber(xl *xlog.Logger, roomID string) (int, error)
+	// ProposePKRequest 提出PK请求。
+	ProposePKRequest(xl *xlog.Logger, proposerID string, receiverID string) error
+	// GetPKRequest 列出PK请求。
+	GetPKRequest(xl *xlog.Logger, proposerID string, receiverID string) (*protocol.PKRequest, error)
+	// ListPKRequestsByUser 列出涉及某一用户的所有PK请求。
+	ListPKRequestsByUser(xl *xlog.Logger, userID string) ([]*protocol.PKRequest, error)
 }
 
 // @Tags qlive api

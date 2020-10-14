@@ -301,6 +301,18 @@ func (m *mockRoom) GetAudienceNumber(xl *xlog.Logger, roomID string) (int, error
 	return len(m.roomAudiences[roomID]), nil
 }
 
+func (m *mockRoom) ProposePKRequest(xl *xlog.Logger, proposerID, receiverID string) error {
+	return nil
+}
+
+func (m *mockRoom) GetPKRequest(xl *xlog.Logger, proposerID, receiverID string) (*protocol.PKRequest, error) {
+	return nil, nil
+}
+
+func (m *mockRoom) ListPKRequestsByUser(xl *xlog.Logger, userID string) ([]*protocol.PKRequest, error) {
+	return nil, nil
+}
+
 type mockUpload struct{}
 
 func (m *mockUpload) GetUploadToken(xl *xlog.Logger, userID string, filename string, expireSeconds int) (string, error) {
