@@ -202,7 +202,7 @@ func (c *FeedbackController) sendFeedbackByMail(feedback *protocol.Feedback) err
 	msg = msg + fmt.Sprintf("发送者ID： %s\n", feedback.Sender)
 	msg = msg + fmt.Sprintf("发送者手机号：%s\n", senderAccount.PhoneNumber)
 	msg = msg + fmt.Sprintf("消息内容：%s\n", feedback.Content)
-	msg = msg + fmt.Sprintf("相关附件URL：%s\n", feedback.AttachementURL)
+	msg = msg + fmt.Sprintf("相关附件URL：%s\n", feedback.AttachmentURL)
 	// generate message.
 	d := gomail.NewDialer(c.mailConfig.SMTPHost, c.mailConfig.SMTPPort, c.mailConfig.Username, c.mailConfig.Password)
 	d.TLSConfig = &tls.Config{InsecureSkipVerify: true}

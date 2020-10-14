@@ -108,6 +108,6 @@ func TestSendFeedback(t *testing.T) {
 		storedFeedback := mockFeedback.feedbacks[0]
 		assert.Equalf(t, id, storedFeedback.ID, "test case %d: feedback ID does not match", i)
 		assert.Equalf(t, testCase.userID, storedFeedback.Sender, "test case %d: sender should be the same as expected", i)
-		assert.Equalf(t, testCase.storedAttachmentURL, storedFeedback.AttachementURL, "test case %d: attachment URL should be the same as expected", i)
+		assert.Equalf(t, testCase.storedAttachmentURL, storedFeedback.AttachmentURL, "test case %d: attachment URL should be the same as expected", i)
 	}
 }
