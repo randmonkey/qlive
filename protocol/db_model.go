@@ -124,6 +124,12 @@ type LiveRoom struct {
 	IMChatRoom string `json:"imGroup" bson:"imGroup"`
 }
 
+// PKRequest PK请求信息。
+type PKRequest struct {
+	Proposer string `json:"id" bson:"_id"`
+	
+}
+
 // Feedback 反馈信息。
 type Feedback struct {
 	ID            string    `json:"id" bson:"_id"`

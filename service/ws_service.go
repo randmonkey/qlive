@@ -391,6 +391,7 @@ func (c *WSClient) onStartPK(ctx context.Context, m msgpump.Message) {
 func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 	var req protocol.AnswerPKRequest
 	err := req.Unmarshal(m)
+
 	if err != nil {
 		res := &protocol.AnswerPKResponse{
 			RPCID: req.RPCID,
@@ -421,27 +422,7 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 		c.Notify(protocol.MT_AnswerPKResponse, res)
 		return
 	}
-	pkPlayer, err := c.s.accountCtl.GetAccountByID(c.xl, pkRoom.Creator)
-	if err != nil {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorPlayerNoExist,
-			Error: errors.WSErrorToString[errors.WSErrorPlayerNoExist],
-		}
-		c.Notify(protocol.MT_AnswerPKResponse, res)
-		return
-	}
 	selfPlayer, err := c.s.accountCtl.GetAccountByID(c.xl, c.playerID)
-	if err != nil {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		c.Notify(protocol.MT_AnswerPKResponse, res)
-		return
-	}
-	pkActiveUser, err := c.s.accountCtl.GetActiveUserByID(c.xl, pkPlayer.ID)
 	if err != nil {
 		res := &protocol.AnswerPKResponse{
 			RPCID: req.RPCID,
@@ -461,7 +442,47 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 		c.Notify(protocol.MT_AnswerPKResponse, res)
 		return
 	}
+	// shouldResetStatus 如果响应PK时，出现对方房间不存在（已下播）、状态不对等异常情况，应重置当前直播间与用户状态为单人直播中。
+	shouldResetStatus := false
+	defer func(err error) {
+		if shouldResetStatus {
+			c.xl.Debugf("answer PK: error %v, reset room and user status", err)
+			selfActiveUser.Status = protocol.UserStatusSingleLive
+			selfActiveUser.Status = protocol.UserStatusSingleLive
+			_, updateErr := c.s.roomCtl.UpdateRoom(c.xl, selfRoom.ID, selfRoom)
+			if updateErr != nil {
+				c.xl.Warnf("failed to reset room %s, error %v", selfRoom.ID, updateErr)
+			}
+			_, updateErr = c.s.accountCtl.UpdateActiveUser(c.xl, selfPlayer.ID, selfActiveUser)
+			if updateErr != nil {
+				c.xl.Warnf("failed to reset user status of user %s, error %v", selfPlayer.ID, updateErr)
+			}
+		}
+	}(err)
 
+	pkPlayer, err := c.s.accountCtl.GetAccountByID(c.xl, pkRoom.Creator)
+	if err != nil {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorPlayerNoExist,
+			Error: errors.WSErrorToString[errors.WSErrorPlayerNoExist],
+		}
+		shouldResetStatus = true
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
+
+	pkActiveUser, err := c.s.accountCtl.GetActiveUserByID(c.xl, pkPlayer.ID)
+	if err != nil {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		shouldResetStatus = true
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
 	if req.Accept {
 		if selfRoom.Status != protocol.LiveRoomStatusWaitPK {
 			res := &protocol.AnswerPKResponse{
@@ -469,6 +490,7 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 				Code:  errors.WSErrorRoomNotInPK,
 				Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
 			}
+			shouldResetStatus = true
 			c.Notify(protocol.MT_AnswerPKResponse, res)
 			return
 		}
@@ -478,6 +500,7 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 				Code:  errors.WSErrorRoomNotInPK,
 				Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
 			}
+			shouldResetStatus = true
 			c.Notify(protocol.MT_AnswerPKResponse, res)
 			return
 		}
@@ -499,6 +522,7 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 			Code:  errors.WSErrorPlayerOffline,
 			Error: errors.WSErrorToString[errors.WSErrorPlayerOffline],
 		}
+		shouldResetStatus = true
 		c.Notify(protocol.MT_AnswerPKResponse, res)
 		return
 	}
