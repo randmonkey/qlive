@@ -219,6 +219,7 @@ func TestListAllRooms(t *testing.T) {
 
 	testCases := []struct {
 		rooms                []*protocol.LiveRoom
+		userID               string
 		expectedLength       int
 		expectedCreators     map[string]string
 		expectedCreatorNames map[string]string
@@ -226,10 +227,19 @@ func TestListAllRooms(t *testing.T) {
 	}{
 		{
 			rooms:                []*protocol.LiveRoom{room0, pkRoom1, pkRoom2},
+			userID:               "user-x",
 			expectedLength:       3,
 			expectedCreators:     map[string]string{"room-0": "user-0", "pkroom-1": "user-1", "pkroom-2": "user-2"},
 			expectedCreatorNames: map[string]string{"room-0": "name-0", "pkroom-1": "name-1", "pkroom-2": "name-2"},
 			expectedPKAnchors:    map[string]string{"room-0": "", "pkroom-1": "user-2", "pkroom-2": "user-1"},
+		},
+		{
+			rooms:                []*protocol.LiveRoom{room0, pkRoom1, pkRoom2},
+			userID:               "user-0",
+			expectedLength:       2,
+			expectedCreators:     map[string]string{"pkroom-1": "user-1", "pkroom-2": "user-2"},
+			expectedCreatorNames: map[string]string{"pkroom-1": "name-1", "pkroom-2": "name-2"},
+			expectedPKAnchors:    map[string]string{"pkroom-1": "user-2", "pkroom-2": "user-1"},
 		},
 	}
 
@@ -253,6 +263,7 @@ func TestListAllRooms(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Set(protocol.XLogKey, xlog.New(fmt.Sprintf("test-list-rooms-%d", i)))
+		c.Set(protocol.UserIDContextKey, testCase.userID)
 		// build request
 		req, err := http.NewRequest("GET", "/v1/rooms", nil)
 		assert.Nilf(t, err, "failed to craete request for case %d,error %v", i, err)
