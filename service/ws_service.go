@@ -53,6 +53,10 @@ type WSClient struct {
 	lastMessageTime time.Time
 }
 
+const (
+	defaultPKRequestTimeoutSecond = 10
+)
+
 // Start start websocket client. Implement for github.com/qrtc/qlive/service/websocket Client
 func (c *WSClient) Start(p *msgpump.Pump) {
 	c.p = p
@@ -385,12 +389,14 @@ func (c *WSClient) onStartPK(ctx context.Context, m msgpump.Message) {
 		Error: errors.WSErrorToString[errors.WSErrorOK],
 	}
 	c.Notify(protocol.MT_StartResponse, res)
+	go c.s.waitPKTimeout(c.playerID, selfRoom.ID, pkActiveUser.ID, pkRoom.ID)
 	return
 }
 
 func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 	var req protocol.AnswerPKRequest
 	err := req.Unmarshal(m)
+
 	if err != nil {
 		res := &protocol.AnswerPKResponse{
 			RPCID: req.RPCID,
@@ -421,27 +427,7 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 		c.Notify(protocol.MT_AnswerPKResponse, res)
 		return
 	}
-	pkPlayer, err := c.s.accountCtl.GetAccountByID(c.xl, pkRoom.Creator)
-	if err != nil {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorPlayerNoExist,
-			Error: errors.WSErrorToString[errors.WSErrorPlayerNoExist],
-		}
-		c.Notify(protocol.MT_AnswerPKResponse, res)
-		return
-	}
 	selfPlayer, err := c.s.accountCtl.GetAccountByID(c.xl, c.playerID)
-	if err != nil {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		c.Notify(protocol.MT_AnswerPKResponse, res)
-		return
-	}
-	pkActiveUser, err := c.s.accountCtl.GetActiveUserByID(c.xl, pkPlayer.ID)
 	if err != nil {
 		res := &protocol.AnswerPKResponse{
 			RPCID: req.RPCID,
@@ -461,7 +447,47 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 		c.Notify(protocol.MT_AnswerPKResponse, res)
 		return
 	}
+	// shouldResetStatus 如果响应PK时，出现对方房间不存在（已下播）、状态不对等异常情况，应重置当前直播间与用户状态为单人直播中。
+	shouldResetStatus := false
+	defer func(err error) {
+		if shouldResetStatus {
+			c.xl.Debugf("answer PK: error %v, reset room and user status", err)
+			selfActiveUser.Status = protocol.UserStatusSingleLive
+			selfActiveUser.Status = protocol.UserStatusSingleLive
+			_, updateErr := c.s.roomCtl.UpdateRoom(c.xl, selfRoom.ID, selfRoom)
+			if updateErr != nil {
+				c.xl.Warnf("failed to reset room %s, error %v", selfRoom.ID, updateErr)
+			}
+			_, updateErr = c.s.accountCtl.UpdateActiveUser(c.xl, selfPlayer.ID, selfActiveUser)
+			if updateErr != nil {
+				c.xl.Warnf("failed to reset user status of user %s, error %v", selfPlayer.ID, updateErr)
+			}
+		}
+	}(err)
 
+	pkPlayer, err := c.s.accountCtl.GetAccountByID(c.xl, pkRoom.Creator)
+	if err != nil {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorPlayerNoExist,
+			Error: errors.WSErrorToString[errors.WSErrorPlayerNoExist],
+		}
+		shouldResetStatus = true
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
+
+	pkActiveUser, err := c.s.accountCtl.GetActiveUserByID(c.xl, pkPlayer.ID)
+	if err != nil {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorInvalidParameter,
+			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
+		}
+		shouldResetStatus = true
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
 	if req.Accept {
 		if selfRoom.Status != protocol.LiveRoomStatusWaitPK {
 			res := &protocol.AnswerPKResponse{
@@ -469,6 +495,7 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 				Code:  errors.WSErrorRoomNotInPK,
 				Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
 			}
+			shouldResetStatus = true
 			c.Notify(protocol.MT_AnswerPKResponse, res)
 			return
 		}
@@ -478,6 +505,7 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 				Code:  errors.WSErrorRoomNotInPK,
 				Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
 			}
+			shouldResetStatus = true
 			c.Notify(protocol.MT_AnswerPKResponse, res)
 			return
 		}
@@ -499,19 +527,8 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 			Code:  errors.WSErrorPlayerOffline,
 			Error: errors.WSErrorToString[errors.WSErrorPlayerOffline],
 		}
+		shouldResetStatus = true
 		c.Notify(protocol.MT_AnswerPKResponse, res)
-		// 状态恢复
-		selfRoom.Status = protocol.LiveRoomStatusSingle
-		selfActiveUser.Status = protocol.UserStatusSingleLive
-		_, err = c.s.roomCtl.UpdateRoom(c.xl, selfRoom.ID, selfRoom)
-		if err != nil {
-			c.xl.Errorf("Update room failed when pk sponsor offline")
-		}
-		_, err = c.s.accountCtl.UpdateActiveUser(c.xl, selfPlayer.ID, selfActiveUser)
-		if err != nil {
-			c.xl.Errorf("Update user failed when pk sponsor offline")
-		}
-
 		return
 	}
 
@@ -927,6 +944,101 @@ func (s *WSServer) FindPlayer(id string) (c *WSClient, err error) {
 	return player, nil
 }
 
+// 若PK请求已发送超过一定时间还未被响应，恢复PK发起者与接收者的用户与直播间状态。
+func (s *WSServer) onPKTimeout(proposerID string, proposerRoomID string, receiverID string, receiverRoomID string) error {
+	// 恢复状态至单人直播中。
+	// 恢复PK发起者状态。
+	proposer, err := s.accountCtl.GetActiveUserByID(s.xl, proposerID)
+	if err != nil {
+		s.xl.Infof("proposer not found, error %v", err)
+	} else {
+		if proposer.Status == protocol.UserStatusPKWait {
+			proposer.Status = protocol.UserStatusSingleLive
+			_, updateErr := s.accountCtl.UpdateActiveUser(s.xl, proposerID, proposer)
+			if updateErr != nil {
+				s.xl.Errorf("failed to update proposer %s,error %v", proposerID, updateErr)
+				return updateErr
+			}
+		}
+	}
+	// 恢复PK发起者的房间状态。
+	proposerRoom, err := s.roomCtl.GetRoomByID(s.xl, proposerRoomID)
+	if err != nil {
+		s.xl.Infof("proposer's room %s not found, error %v", proposerRoomID, err)
+	} else {
+		if proposerRoom.Status == protocol.LiveRoomStatusWaitPK {
+			proposerRoom.Status = protocol.LiveRoomStatusSingle
+			proposerRoom.PKAnchor = ""
+			_, updateErr := s.roomCtl.UpdateRoom(s.xl, proposerRoom.ID, proposerRoom)
+			if updateErr != nil {
+				s.xl.Errorf("failed to update proposer's room %s, error %v", proposerRoom.ID, updateErr)
+				return updateErr
+			}
+		}
+	}
+	// 恢复PK接收者的用户状态。
+	receiver, err := s.accountCtl.GetActiveUserByID(s.xl, receiverID)
+	if err != nil {
+		s.xl.Infof("receiver %s not found", receiverID)
+	} else {
+		if receiver.Status == protocol.UserStatusPKWait {
+			receiver.Status = protocol.UserStatusSingleLive
+			_, updateErr := s.accountCtl.UpdateActiveUser(s.xl, receiverID, receiver)
+			if updateErr != nil {
+				s.xl.Errorf("failed to update status of receiver %s, error %v", receiverID, updateErr)
+				return updateErr
+			}
+		}
+	}
+	// 恢复PK接收者的房间状态。
+	receiverRoom, err := s.roomCtl.GetRoomByID(s.xl, receiverRoomID)
+	if err != nil {
+		s.xl.Infof("receiver's room %s not found, error %v", receiverRoomID, err)
+	} else {
+		if receiverRoom.Status == protocol.LiveRoomStatusWaitPK {
+			receiverRoom.Status = protocol.LiveRoomStatusSingle
+			receiverRoom.PKAnchor = ""
+			_, updateErr := s.roomCtl.UpdateRoom(s.xl, receiverRoom.ID, receiverRoom)
+			if updateErr != nil {
+				s.xl.Errorf("failed to update receiver's room %s, error %v", receiverRoom.ID, err)
+				return updateErr
+			}
+		}
+	}
+	// 发送通知。
+	proposerClient, err := s.FindPlayer(proposerID)
+	if err != nil {
+		s.xl.Infof("proposer %s offline", proposerID)
+	} else {
+		msg := &protocol.PKTimeoutNotify{
+			PKRoomID:   receiverRoomID,
+			PKAnchorID: receiverID,
+		}
+		proposerClient.Notify(protocol.MT_PKTimeoutNotify, msg)
+	}
+	receiverClient, err := s.FindPlayer(receiverID)
+	if err != nil {
+		s.xl.Infof("receiver %s offline", receiverID)
+	} else {
+		msg := &protocol.PKTimeoutNotify{
+			PKRoomID:   proposerRoomID,
+			PKAnchorID: proposerID,
+		}
+		receiverClient.Notify(protocol.MT_PKTimeoutNotify, msg)
+	}
+	return nil
+}
+
+func (s *WSServer) waitPKTimeout(proposerID string, proposerRoomID string, receiverID string, receiverRoomID string) {
+	pkTimeoutDuration := time.Duration(s.conf.WsConf.PKRequestTimeoutSecond) * time.Second
+	time.Sleep(pkTimeoutDuration)
+	err := s.onPKTimeout(proposerID, proposerRoomID, receiverID, receiverRoomID)
+	if err != nil {
+		s.xl.Warnf("failed to process pk request timeout, error %v", err)
+	}
+	return
+}
+
 func (s *WSServer) generateRTCRoomToken(roomID string, userID string, permission string) string {
 	rtcClient := qiniurtc.NewManager(&qiniuauth.Credentials{
 		AccessKey: s.conf.RTC.KeyPair.AccessKey,
@@ -951,6 +1063,9 @@ func NewWSServer(conf *config.Config) (s *WSServer, err error) {
 		conf:  *conf,
 		xl:    xlog.New(NewReqID()),
 		conns: make(map[string]*WSClient),
+	}
+	if conf.WsConf.PKRequestTimeoutSecond == 0 {
+		conf.WsConf.PKRequestTimeoutSecond = defaultPKRequestTimeoutSecond
 	}
 
 	s.accountCtl, err = controller.NewAccountController(conf.Mongo.URI, conf.Mongo.Database, nil)
