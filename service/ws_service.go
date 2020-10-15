@@ -500,6 +500,18 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 			Error: errors.WSErrorToString[errors.WSErrorPlayerOffline],
 		}
 		c.Notify(protocol.MT_AnswerPKResponse, res)
+		// 状态恢复
+		selfRoom.Status = protocol.LiveRoomStatusSingle
+		selfActiveUser.Status = protocol.UserStatusSingleLive
+		_, err = c.s.roomCtl.UpdateRoom(c.xl, selfRoom.ID, selfRoom)
+		if err != nil {
+			c.xl.Errorf("Update room failed when pk sponsor offline")
+		}
+		_, err = c.s.accountCtl.UpdateActiveUser(c.xl, selfPlayer.ID, selfActiveUser)
+		if err != nil {
+			c.xl.Errorf("Update user failed when pk sponsor offline")
+		}
+
 		return
 	}
 
