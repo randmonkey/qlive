@@ -194,7 +194,12 @@ func (h *RoomHandler) ListAllRooms(c *gin.Context) {
 		return
 	}
 	resp := &protocol.ListRoomsResponse{}
+	userID := c.GetString(protocol.UserIDContextKey)
 	for _, room := range rooms {
+		if userID == room.Creator {
+			// 隐藏自己创建的房间
+			continue
+		}
 		creatorInfo, err := h.Account.GetAccountByID(xl, room.Creator)
 		if err != nil {
 			xl.Errorf("failed to get account info for user %s, creator of room %s", room.Creator, room.ID)
