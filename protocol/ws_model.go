@@ -31,7 +31,6 @@ const (
 	MT_PKOfferNotify     = "on-pk-offer"
 	MT_PKAnswerNotify    = "on-pk-answer"
 	MT_PKEndNotify       = "on-pk-end"
-	MT_PKTimeoutNotify   = "on-pk-timeout"
 	MT_DisconnectNotify  = "disconnect"
 )
 
@@ -224,23 +223,6 @@ func (p *PKEndNotify) Marshal() ([]byte, error) {
 }
 
 func (p *PKEndNotify) Unmarshal(b []byte) error {
-	return json.Unmarshal(b, p)
-}
-
-// PKTimeoutNotify 通知PK请求超时
-type PKTimeoutNotify struct {
-	RPCID string `json:"rpcID,omitempty"`
-	// PKAnchorID PK 主播ID，PK请求的另一方主播的用户ID。
-	PKAnchorID string `json:"pkAnchorID"`
-	// PKRoomID PK 直播间ID,PK请求的另一方的直播间ID。
-	PKRoomID string `json:"pkRoomID"`
-}
-
-func (p *PKTimeoutNotify) Marshal() ([]byte, error) {
-	return json.Marshal(p)
-}
-
-func (p *PKTimeoutNotify) Unmarshal(b []byte) error {
 	return json.Unmarshal(b, p)
 }
 

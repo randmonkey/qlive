@@ -22,7 +22,6 @@ type WebSocketConf struct {
 	PingTickerSecond       int `json:"ping_ticker_s"`
 	PongTimeoutSecond      int `json:"pong_timeout_s"`
 	ReconnectTimeoutSecond int `json:"reconnect_timeout_s"`
-	PKRequestTimeoutSecond int `json:"pk_request_timeout_s"`
 
 	ListenAddr string `json:"listen_addr" validate:"nonzero"`
 	ServeURI   string `json:"serve_uri" validate:"nonzero"`
