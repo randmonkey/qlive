@@ -407,7 +407,7 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 		return
 	}
 
-	pkRoom, err := c.s.roomCtl.GetRoomByID(c.xl, req.PKRoomID)
+	pkRoom, err := c.s.roomCtl.GetRoomByID(c.xl, req.ReqRoomID)
 	if err != nil {
 		res := &protocol.AnswerPKResponse{
 			RPCID: req.RPCID,
@@ -513,9 +513,9 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 
 	// 通知发起者
 	answerMessage := &protocol.PKAnswerNotify{
-		RPCID:    NewReqID(),
-		PKRoomID: req.PKRoomID,
-		Accepted: req.Accept,
+		RPCID:     NewReqID(),
+		ReqRoomID: req.ReqRoomID,
+		Accepted:  req.Accept,
 	}
 	if req.Accept {
 		answerMessage.RTCRoom = selfRoom.ID
@@ -593,10 +593,10 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 
 	// 成功返回
 	res := &protocol.AnswerPKResponse{
-		PKRoomID: req.PKRoomID,
-		RPCID:    req.RPCID,
-		Code:     errors.WSErrorOK,
-		Error:    errors.WSErrorToString[errors.WSErrorOK],
+		ReqRoomID: req.ReqRoomID,
+		RPCID:     req.RPCID,
+		Code:      errors.WSErrorOK,
+		Error:     errors.WSErrorToString[errors.WSErrorOK],
 	}
 	c.Notify(protocol.MT_AnswerPKResponse, res)
 	return
