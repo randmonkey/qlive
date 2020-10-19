@@ -143,8 +143,8 @@ func (p *EndPKResponse) Unmarshal(b []byte) error {
 
 type AnswerPKRequest struct {
 	RPCID string `json:"rpcID,omitempty"`
-	// ReqRoomID 发起 PK 请求的直播间ID。
-	ReqRoomID string `json:"reqRoomID"`
+	// PKRoomID 发起PK请求的直播间ID。
+	PKRoomID string `json:"pkRoomID"`
 	// 是否接受PK
 	Accept bool `json:"accept"`
 }
@@ -158,11 +158,11 @@ func (p *AnswerPKRequest) Unmarshal(b []byte) error {
 }
 
 type AnswerPKResponse struct {
-	// ReqRoomID 发起PK请求的直播间ID。
-	ReqRoomID string `json:"ReqRoomID"`
-	RPCID     string `json:"rpcID,omitempty"`
-	Code      int    `json:"code"`
-	Error     string `json:"error"`
+	// PKRoomID 发起PK请求的直播间ID。
+	PKRoomID string `json:"pkRoomID"`
+	RPCID    string `json:"rpcID,omitempty"`
+	Code     int    `json:"code"`
+	Error    string `json:"error"`
 }
 
 func (p *AnswerPKResponse) Marshal() ([]byte, error) {
@@ -195,8 +195,8 @@ func (p *PKOfferNotify) Unmarshal(b []byte) error {
 
 type PKAnswerNotify struct {
 	RPCID string `json:"rpcID,omitempty"`
-	// 发起 PK 请求的直播间 ID
-	ReqRoomID string `json:"reqRoomID"`
+	// PK 直播间 ID
+	PKRoomID string `json:"pkRoomID"`
 	// 是否接受 PK
 	Accepted bool `json:"accepted"`
 	// PK被接受时才有该字段，表示被PK直播间对应的RTC房间
