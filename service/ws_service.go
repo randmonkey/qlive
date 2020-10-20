@@ -946,6 +946,8 @@ func (s *WSServer) FindPlayer(id string) (c *WSClient, err error) {
 
 // 若PK请求已发送超过一定时间还未被响应，恢复PK发起者与接收者的用户与直播间状态。
 func (s *WSServer) onPKTimeout(proposerID string, proposerRoomID string, receiverID string, receiverRoomID string) error {
+	shouldNoticeProposer := false
+	shouldNoticeReceiver := false
 	// 恢复状态至单人直播中。
 	// 恢复PK发起者状态。
 	proposer, err := s.accountCtl.GetActiveUserByID(s.xl, proposerID)
@@ -953,6 +955,7 @@ func (s *WSServer) onPKTimeout(proposerID string, proposerRoomID string, receive
 		s.xl.Infof("proposer not found, error %v", err)
 	} else {
 		if proposer.Status == protocol.UserStatusPKWait {
+			shouldNoticeProposer = true
 			proposer.Status = protocol.UserStatusSingleLive
 			_, updateErr := s.accountCtl.UpdateActiveUser(s.xl, proposerID, proposer)
 			if updateErr != nil {
@@ -967,6 +970,7 @@ func (s *WSServer) onPKTimeout(proposerID string, proposerRoomID string, receive
 		s.xl.Infof("proposer's room %s not found, error %v", proposerRoomID, err)
 	} else {
 		if proposerRoom.Status == protocol.LiveRoomStatusWaitPK {
+			shouldNoticeProposer = true
 			proposerRoom.Status = protocol.LiveRoomStatusSingle
 			proposerRoom.PKAnchor = ""
 			_, updateErr := s.roomCtl.UpdateRoom(s.xl, proposerRoom.ID, proposerRoom)
@@ -982,6 +986,7 @@ func (s *WSServer) onPKTimeout(proposerID string, proposerRoomID string, receive
 		s.xl.Infof("receiver %s not found", receiverID)
 	} else {
 		if receiver.Status == protocol.UserStatusPKWait {
+			shouldNoticeReceiver = true
 			receiver.Status = protocol.UserStatusSingleLive
 			_, updateErr := s.accountCtl.UpdateActiveUser(s.xl, receiverID, receiver)
 			if updateErr != nil {
@@ -996,6 +1001,7 @@ func (s *WSServer) onPKTimeout(proposerID string, proposerRoomID string, receive
 		s.xl.Infof("receiver's room %s not found, error %v", receiverRoomID, err)
 	} else {
 		if receiverRoom.Status == protocol.LiveRoomStatusWaitPK {
+			shouldNoticeReceiver = true
 			receiverRoom.Status = protocol.LiveRoomStatusSingle
 			receiverRoom.PKAnchor = ""
 			_, updateErr := s.roomCtl.UpdateRoom(s.xl, receiverRoom.ID, receiverRoom)
@@ -1006,26 +1012,32 @@ func (s *WSServer) onPKTimeout(proposerID string, proposerRoomID string, receive
 		}
 	}
 	// 发送通知。
-	proposerClient, err := s.FindPlayer(proposerID)
-	if err != nil {
-		s.xl.Infof("proposer %s offline", proposerID)
-	} else {
-		msg := &protocol.PKTimeoutNotify{
-			PKRoomID:   receiverRoomID,
-			PKAnchorID: receiverID,
+	if shouldNoticeProposer {
+		proposerClient, err := s.FindPlayer(proposerID)
+		if err != nil {
+			s.xl.Infof("proposer %s offline", proposerID)
+		} else {
+			msg := &protocol.PKTimeoutNotify{
+				PKRoomID:   receiverRoomID,
+				PKAnchorID: receiverID,
+			}
+			proposerClient.Notify(protocol.MT_PKTimeoutNotify, msg)
 		}
-		proposerClient.Notify(protocol.MT_PKTimeoutNotify, msg)
 	}
-	receiverClient, err := s.FindPlayer(receiverID)
-	if err != nil {
-		s.xl.Infof("receiver %s offline", receiverID)
-	} else {
-		msg := &protocol.PKTimeoutNotify{
-			PKRoomID:   proposerRoomID,
-			PKAnchorID: proposerID,
+
+	if shouldNoticeReceiver {
+		receiverClient, err := s.FindPlayer(receiverID)
+		if err != nil {
+			s.xl.Infof("receiver %s offline", receiverID)
+		} else {
+			msg := &protocol.PKTimeoutNotify{
+				PKRoomID:   proposerRoomID,
+				PKAnchorID: proposerID,
+			}
+			receiverClient.Notify(protocol.MT_PKTimeoutNotify, msg)
 		}
-		receiverClient.Notify(protocol.MT_PKTimeoutNotify, msg)
 	}
+
 	return nil
 }
 
