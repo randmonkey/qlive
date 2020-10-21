@@ -182,6 +182,44 @@ type IMTokenResponse struct {
 	Token  string `json:"token"`
 }
 
+// RongCloudSignature 融云API回调签名。
+type RongCloudSignature struct {
+	Nonce         string `form:"nonce" json:"nonce"`
+	SignTimestamp string `form:"signTimestamp" json:"signTimestamp"`
+	Signature     string `form:"signature" json:"signature"`
+}
+
+// RongCloudMessage 融云消息路由的消息体。
+type RongCloudMessage struct {
+	Signature  RongCloudSignature `form:"-"`
+	FromUserID string             `form:"fromUserId" json:"fromUserID"`
+	ToUserID   string             `form:"toUserId" json:"toUserID"`
+	// ObjectName 消息的类型。
+	ObjectName     string                  `form:"objectName" json:"objectName"`
+	Content        RongCloudMessageContent `form:"content" json:"content"`
+	ChannelType    string                  `form:"channelType" json:"channelType"`
+	MsgTimestampMS int64                   `form:"msgTimestamp" json:"msgTimestamp"`
+	MsgUID         string                  `form:"msgUID" json:"msgUID"`
+	SensitiveType  int                     `form:"sensitiveType" json:"sensitiveType"`
+	Source         string                  `form:"source" json:"source"`
+	GroupUserIDs   string                  `form:"groupUserIds" json:"groupUserIds"`
+}
+
+// RongCloudUserInfo 融云消息中的用户信息。
+type RongCloudUserInfo struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Portrait string `json:"portrait"`
+	Extra    string `json:"extra,omitempty"`
+}
+
+// RongCloudMessageContent 融云消息内容。目前仅支持文字消息。
+type RongCloudMessageContent struct {
+	Content string            `json:"content"`
+	User    RongCloudUserInfo `json:"user"`
+	Extra   string            `json:"extra,omitempty"`
+}
+
 // GetUploadTokenArgs 获取上传文件token的参数。
 type GetUploadTokenArgs struct {
 	Filename      string `json:"filename"`      // 上传资源的文件名（key）

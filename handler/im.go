@@ -27,6 +27,7 @@ import (
 // IMInterface IM用户管理相关接口。
 type IMInterface interface {
 	GetUserToken(xl *xlog.Logger, userID string) (imUser *protocol.IMUser, err error)
+	ProcessMessage(xl *xlog.Logger, msg interface{}) error
 }
 
 // IMHandler 处理IM相关API。
@@ -63,4 +64,50 @@ func (h *IMHandler) GetUserToken(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, resp)
 	return
+}
+
+// ProcessMessage 处理IM消息。
+// @ID process-im-message
+// @Summary process IM messages
+// @Description callback API to receive and process messages from IM
+// @Accept json
+// @Produce json
+// @Success 200 {object} protocol.IMMessageResponse
+// @Failure 400 {object} errors.HTTPError
+// @Router /im_messages [post]
+func (h *IMHandler) ProcessMessage(c *gin.Context) {
+	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
+	requestID := xl.ReqId
+
+	provider := c.Param("provider")
+	switch provider {
+	case "rongcloud":
+		msg := &protocol.RongCloudMessage{}
+
+		err := c.ShouldBind(msg)
+		if err != nil {
+			xl.Infof("failed to parse rongcloud message, error %v", err)
+			httpErr := errors.NewHTTPErrorBadRequest().WithRequestID(requestID).WithMessage("invalid message body")
+			c.JSON(http.StatusBadRequest, httpErr)
+			return
+		}
+		sign := &protocol.RongCloudSignature{}
+		err = c.ShouldBindQuery(sign)
+		if err != nil {
+			xl.Infof("failed to get rongcloud signature, error %v", err)
+			httpErr := errors.NewHTTPErrorBadRequest().WithRequestID(requestID).WithMessage("invalid message signature")
+			c.JSON(http.StatusBadRequest, httpErr)
+			return
+		}
+		msg.Signature = *sign
+		xl.Debugf("%+v", msg)
+		h.IMService.ProcessMessage(xl, msg)
+		c.JSON(http.StatusOK, struct{}{})
+		return
+	default:
+		xl.Infof("unsupported IM provider %s", provider)
+		httpErr := errors.NewHTTPErrorBadRequest().WithRequestID(requestID).WithMessage("unsupported IM provider")
+		c.JSON(http.StatusBadRequest, httpErr)
+		return
+	}
 }
