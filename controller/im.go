@@ -15,6 +15,7 @@
 package controller
 
 import (
+	"crypto/sha1"
 	"fmt"
 
 	"github.com/qiniu/x/xlog"
@@ -31,6 +32,10 @@ const (
 
 // RongCloudIMController 融云IM控制器，执行IM用户及聊天室管理。
 type RongCloudIMController struct {
+	appKey    string
+	appSecret string
+	// systemUserID 系统用户ID，发送到该ID的IM消息将被当作发送给系统的信令处理。
+	systemUserID    string
 	rongCloudClient *rcsdk.RongCloud
 	xl              *xlog.Logger
 }
@@ -38,6 +43,7 @@ type RongCloudIMController struct {
 // IMInterface IM用户管理相关接口。
 type IMInterface interface {
 	GetUserToken(xl *xlog.Logger, userID string) (*protocol.IMUser, error)
+	ProcessMessage(xl *xlog.Logger, msg interface{}) error
 }
 
 // NewIMController 生成IM控制器。
@@ -62,6 +68,8 @@ func NewRongCloudIMController(appKey string, appSecret string, xl *xlog.Logger) 
 	}
 
 	return &RongCloudIMController{
+		appKey:          appKey,
+		appSecret:       appSecret,
 		rongCloudClient: rcsdk.NewRongCloud(appKey, appSecret),
 		xl:              xl,
 	}, nil
@@ -84,6 +92,31 @@ func (c *RongCloudIMController) GetUserToken(xl *xlog.Logger, userID string) (*p
 	}, nil
 }
 
+func (c *RongCloudIMController) validateSignature(sign protocol.RongCloudSignature) bool {
+	localSignature := sha1.Sum([]byte(c.appSecret + sign.Nonce + sign.SignTimestamp))
+	return string(localSignature[:]) == sign.Signature
+}
+
+func (c *RongCloudIMController) processMessage(xl *xlog.Logger, msg *protocol.RongCloudMessage) error {
+	if xl == nil {
+		xl = c.xl
+	}
+
+	if msg.ObjectName == "RC:TxtMsg" && msg.ToUserID == c.systemUserID {
+		xl.Debugf("msg content %+v", msg.Content)
+	}
+	return nil
+}
+
+// ProcessMessage 处理通过回调收到的消息。
+func (c *RongCloudIMController) ProcessMessage(xl *xlog.Logger, msg interface{}) error {
+	rcMsg, ok := msg.(*protocol.RongCloudMessage)
+	if !ok {
+		return fmt.Errorf("incorrect message type")
+	}
+	return c.processMessage(xl, rcMsg)
+}
+
 type mockIMController struct{}
 
 func (m *mockIMController) GetUserToken(xl *xlog.Logger, userID string) (*protocol.IMUser, error) {
@@ -92,4 +125,8 @@ func (m *mockIMController) GetUserToken(xl *xlog.Logger, userID string) (*protoc
 		Username: userID,
 		Token:    "im-token." + userID,
 	}, nil
+}
+
+func (m *mockIMController) ProcessMessage(xl *xlog.Logger, msg interface{}) error {
+	return nil
 }
