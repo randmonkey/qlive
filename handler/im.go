@@ -20,19 +20,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/qiniu/x/xlog"
 
+	"github.com/qrtc/qlive/controller"
 	"github.com/qrtc/qlive/errors"
 	"github.com/qrtc/qlive/protocol"
 )
 
-// IMInterface IM用户管理相关接口。
-type IMInterface interface {
-	GetUserToken(xl *xlog.Logger, userID string) (imUser *protocol.IMUser, err error)
-	ProcessMessage(xl *xlog.Logger, msg interface{}) error
-}
-
 // IMHandler 处理IM相关API。
 type IMHandler struct {
-	IMService IMInterface
+	IMService controller.IMInterface
 }
 
 // @Tags qlive api

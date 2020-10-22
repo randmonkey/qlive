@@ -106,6 +106,10 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 	imHandler := &handler.IMHandler{
 		IMService: imController,
 	}
+	if conf.Signaling.Type == "im" {
+		signalingService := controller.NewSignalingService(nil, conf, accountController, roomController)
+		imHandler.IMService = imHandler.IMService.WithSignalingService(signalingService)
+	}
 
 	uploadController, err := controller.NewQiniuUploadController(conf.Storage, nil)
 	if err != nil {

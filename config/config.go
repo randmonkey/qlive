@@ -16,13 +16,20 @@ package config
 
 import "os"
 
+// SignalingConfig 控制信令相关的配置。
+type SignalingConfig struct {
+	// Type 信令通道的类型，设为websocket/ws表示通过websocket收发信令，im表示通过im收发信令。
+	Type string `json:"type" validate:"nonzero"`
+	// PKRequestTimeoutSecond PK请求超时时间。
+	PKRequestTimeoutSecond int `json:"pk_request_timeout_s"`
+}
+
 // WebSocketConf websocket长连接配置。
 type WebSocketConf struct {
 	AuthorizeTimeoutMS     int `json:"authorize_timeout_ms"`
 	PingTickerSecond       int `json:"ping_ticker_s"`
 	PongTimeoutSecond      int `json:"pong_timeout_s"`
 	ReconnectTimeoutSecond int `json:"reconnect_timeout_s"`
-	PKRequestTimeoutSecond int `json:"pk_request_timeout_s"`
 
 	ListenAddr string `json:"listen_addr" validate:"nonzero"`
 	ServeURI   string `json:"serve_uri" validate:"nonzero"`
@@ -107,8 +114,10 @@ type RongCloudIMConfig struct {
 
 // IMConfig IM服务配置。
 type IMConfig struct {
-	Provider  string             `json:"provider"`
-	RongCloud *RongCloudIMConfig `json:"rongcloud"`
+	Provider string `json:"provider"`
+	// SystemUserID 系统用户ID。该用户用于与直播用户通过IM传递控制消息。
+	SystemUserID string             `json:"system_user_id"`
+	RongCloud    *RongCloudIMConfig `json:"rongcloud"`
 }
 
 // PrometheusConfig prometheus 监控服务配置。
@@ -127,6 +136,7 @@ type Config struct {
 	ListenAddr string `json:"listen_addr"`
 
 	WsConf       *WebSocketConf      `json:"websocket_conf"`
+	Signaling    *SignalingConfig    `json:"signaling"`
 	Mongo        *MongoConfig        `json:"mongo"`
 	SMS          *SMSConfig          `json:"sms"`
 	RTC          *QiniuRTCConfig     `json:"rtc"`

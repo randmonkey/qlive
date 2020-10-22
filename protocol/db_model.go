@@ -58,9 +58,14 @@ const (
 	UserStatusSingleLive UserStatus = "singleLive"
 	// UserStatusPKLive 用户正在PK连麦直播。
 	UserStatusPKLive UserStatus = "pkLive"
-	// UserStatusPKPending 用户已发起PK请求,正在等待响应
+	// UserStatusPKWait 用户已发起PK请求,正在等待响应
 	UserStatusPKWait UserStatus = "pkWait"
 )
+
+// IsUserBroadCasting 用户状态是否属于直播中。
+func IsUserBroadCasting(status UserStatus) bool {
+	return status == UserStatusSingleLive || status == UserStatusPKLive || status == UserStatusPKWait
+}
 
 // IMUser 对应IM 用户信息。
 type IMUser struct {
