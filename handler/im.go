@@ -106,3 +106,52 @@ func (h *IMHandler) ProcessMessage(c *gin.Context) {
 		return
 	}
 }
+
+// OnUserStatusChange 处理用户在线状态改变的回调消息。
+func (h *IMHandler) OnUserStatusChange(c *gin.Context) {
+	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
+	requestID := xl.ReqId
+
+	provider := c.Param("provider")
+	switch provider {
+	case "rongcloud":
+		statusList := []*protocol.RongCloudUserStatusResp{}
+		err := c.ShouldBindJSON(&statusList)
+		if err != nil {
+			xl.Infof("failed to parse rongcloud user status, error %v", err)
+			httpErr := errors.NewHTTPErrorBadRequest().WithRequestID(requestID).WithMessage("invalid message body")
+			c.JSON(http.StatusBadRequest, httpErr)
+			return
+		}
+		sign := &protocol.RongCloudSignature{}
+		err = c.ShouldBindQuery(sign)
+		if err != nil {
+			xl.Infof("failed to get rongcloud signature, error %v", err)
+			httpErr := errors.NewHTTPErrorBadRequest().WithRequestID(requestID).WithMessage("invalid message signature")
+			c.JSON(http.StatusBadRequest, httpErr)
+			return
+		}
+		for _, status := range statusList {
+			userID := status.UserID
+			switch status.Status {
+			case string(protocol.RongCloudUserOnline):
+				xl.Debugf("user %s rongcloud IM online", userID)
+				h.IMService.UserOnline(xl, userID)
+			case string(protocol.RongClouduserOffline):
+				xl.Debugf("user %s rongcloud IM offline", userID)
+				h.IMService.UserOffline(xl, userID)
+			case string(protocol.RongCloudUserLogout):
+				xl.Debugf("user %s rongcloud IM logout", userID)
+				h.IMService.UserOffline(xl, userID)
+			default:
+				xl.Infof("user %s undefined status %s", userID, status.Status)
+			}
+		}
+	default:
+		xl.Infof("unsupported IM provider %s", provider)
+		httpErr := errors.NewHTTPErrorBadRequest().WithRequestID(requestID).WithMessage("unsupported IM provider")
+		c.JSON(http.StatusBadRequest, httpErr)
+		return
+	}
+	c.JSON(http.StatusOK, struct{}{})
+}

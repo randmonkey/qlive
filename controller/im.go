@@ -18,6 +18,8 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/qiniu/x/xlog"
 	rcsdk "github.com/rongcloud/server-sdk-go/v3/sdk"
@@ -29,6 +31,8 @@ import (
 const (
 	// DefaultPortraitURL 默认IM头像地址。
 	DefaultPortraitURL = "https://developer.rongcloud.cn/static/images/newversion-logo.png"
+	// DefaultCheckOnlinePeriod 轮询用户是否在线的时间间隔。
+	DefaultCheckOnlinePeriod = 5 * time.Second
 )
 
 // RongCloudIMController 融云IM控制器，执行IM用户及聊天室管理。
@@ -36,11 +40,12 @@ type RongCloudIMController struct {
 	appKey    string
 	appSecret string
 	// systemUserID 系统用户ID，发送到该ID的IM消息将被当作发送给系统的信令处理。
-	systemUserID          string
-	signalingMessageQueue chan string
-	signalingService      *SignalingService
-	rongCloudClient       *rcsdk.RongCloud
-	xl                    *xlog.Logger
+	systemUserID     string
+	userLock         sync.RWMutex
+	userMap          map[string]*protocol.IMUser
+	signalingService *SignalingService
+	rongCloudClient  *rcsdk.RongCloud
+	xl               *xlog.Logger
 }
 
 // 融云的IM消息类型。
@@ -48,11 +53,13 @@ const (
 	RongCloudMessageTypeText = "RC:TxtMsg"
 )
 
-// IMInterface IM用户管理相关接口。
+// IMInterface IM用户与消息管理相关接口。
 type IMInterface interface {
 	GetUserToken(xl *xlog.Logger, userID string) (*protocol.IMUser, error)
 	ProcessMessage(xl *xlog.Logger, msg interface{}) error
 	SendTextMessage(xl *xlog.Logger, userID string, msg string) error
+	UserOnline(xl *xlog.Logger, userID string) error
+	UserOffline(xl *xlog.Logger, userID string) error
 	WithSignalingService(s *SignalingService) IMInterface
 }
 
@@ -78,12 +85,12 @@ func NewRongCloudIMController(appKey string, appSecret string, systemUserID stri
 	}
 
 	c := &RongCloudIMController{
-		appKey:                appKey,
-		appSecret:             appSecret,
-		systemUserID:          systemUserID,
-		signalingMessageQueue: make(chan string, 100),
-		rongCloudClient:       rcsdk.NewRongCloud(appKey, appSecret),
-		xl:                    xl,
+		appKey:          appKey,
+		appSecret:       appSecret,
+		systemUserID:    systemUserID,
+		userMap:         map[string]*protocol.IMUser{},
+		rongCloudClient: rcsdk.NewRongCloud(appKey, appSecret),
+		xl:              xl,
 	}
 	_, err := c.GetUserToken(xl, systemUserID)
 	if err != nil {
@@ -103,11 +110,18 @@ func (c *RongCloudIMController) GetUserToken(xl *xlog.Logger, userID string) (*p
 		xl.Errorf("failed to get user token from rongcloud, error %v", err)
 		return nil, err
 	}
-	return &protocol.IMUser{
-		UserID:   userRes.UserID,
-		Username: userRes.UserID,
-		Token:    userRes.Token,
-	}, nil
+	now := time.Now()
+	imUser := &protocol.IMUser{
+		UserID:           userRes.UserID,
+		Username:         userRes.UserID,
+		Token:            userRes.Token,
+		LastRegisterTime: now,
+		LastOnlineTime:   now,
+	}
+	c.userLock.Lock()
+	c.userMap[userID] = imUser
+	c.userLock.Unlock()
+	return imUser, nil
 }
 
 func (c *RongCloudIMController) validateSignature(sign protocol.RongCloudSignature) bool {
@@ -187,6 +201,27 @@ func (c *RongCloudIMController) SendTextMessage(xl *xlog.Logger, userID string, 
 	return nil
 }
 
+// UserOnline 用户上线。
+func (c *RongCloudIMController) UserOnline(xl *xlog.Logger, userID string) error {
+	if xl == nil {
+		xl = c.xl
+	}
+	xl.Infof("user %s IM online", userID)
+	return nil
+}
+
+// UserOffline 用户下线。
+func (c *RongCloudIMController) UserOffline(xl *xlog.Logger, userID string) error {
+	if xl == nil {
+		xl = c.xl
+	}
+	xl.Infof("user %s IM offline", userID)
+	if c.signalingService != nil {
+		c.signalingService.OnUserOffline(xl, userID)
+	}
+	return nil
+}
+
 type mockIMController struct{}
 
 func (m *mockIMController) GetUserToken(xl *xlog.Logger, userID string) (*protocol.IMUser, error) {
@@ -207,4 +242,12 @@ func (m *mockIMController) SendTextMessage(xl *xlog.Logger, userID string, msg s
 
 func (m *mockIMController) WithSignalingService(s *SignalingService) IMInterface {
 	return m
+}
+
+func (m *mockIMController) UserOnline(xl *xlog.Logger, userID string) error {
+	return nil
+}
+
+func (m *mockIMController) UserOffline(xl *xlog.Logger, userID string) error {
+	return nil
 }
