@@ -453,7 +453,7 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 		if shouldResetStatus {
 			c.xl.Debugf("answer PK: error %v, reset room and user status", err)
 			selfActiveUser.Status = protocol.UserStatusSingleLive
-			selfActiveUser.Status = protocol.UserStatusSingleLive
+			selfRoom.Status = protocol.LiveRoomStatusSingle
 			_, updateErr := c.s.roomCtl.UpdateRoom(c.xl, selfRoom.ID, selfRoom)
 			if updateErr != nil {
 				c.xl.Warnf("failed to reset room %s, error %v", selfRoom.ID, updateErr)
@@ -488,27 +488,26 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 		c.Notify(protocol.MT_AnswerPKResponse, res)
 		return
 	}
-	if req.Accept {
-		if selfRoom.Status != protocol.LiveRoomStatusWaitPK {
-			res := &protocol.AnswerPKResponse{
-				RPCID: req.RPCID,
-				Code:  errors.WSErrorRoomNotInPK,
-				Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
-			}
-			shouldResetStatus = true
-			c.Notify(protocol.MT_AnswerPKResponse, res)
-			return
+	// 判断是否双方房间都在等待PK状态。
+	if selfRoom.Status != protocol.LiveRoomStatusWaitPK {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorRoomNotInPK,
+			Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
 		}
-		if pkRoom.Status != protocol.LiveRoomStatusWaitPK {
-			res := &protocol.AnswerPKResponse{
-				RPCID: req.RPCID,
-				Code:  errors.WSErrorRoomNotInPK,
-				Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
-			}
-			shouldResetStatus = true
-			c.Notify(protocol.MT_AnswerPKResponse, res)
-			return
+		shouldResetStatus = true
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
+	if pkRoom.Status != protocol.LiveRoomStatusWaitPK {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorRoomNotInPK,
+			Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
 		}
+		shouldResetStatus = true
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
 	}
 
 	// 通知发起者
