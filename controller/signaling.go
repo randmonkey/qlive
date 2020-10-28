@@ -16,6 +16,7 @@ package controller
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	qiniuauth "github.com/qiniu/api.v7/v7/auth"
@@ -32,14 +33,21 @@ type MarshallableMessage interface {
 	Marshal() ([]byte, error)
 }
 
+type pkRequest struct {
+	proposerID string
+	receiverID string
+}
+
 // SignalingService 处理各种控制信息。
 type SignalingService struct {
-	xl         *xlog.Logger
-	accountCtl *AccountController
-	roomCtl    *RoomController
-	pkTimeout  time.Duration
-	rtcConfig  *config.QiniuRTCConfig
-	Notify     func(xl *xlog.Logger, userID string, msgType string, msg MarshallableMessage) error
+	xl               *xlog.Logger
+	accountCtl       *AccountController
+	roomCtl          *RoomController
+	pkRequestLock    sync.RWMutex
+	pkRequestAnswers map[pkRequest]chan bool
+	pkTimeout        time.Duration
+	rtcConfig        *config.QiniuRTCConfig
+	Notify           func(xl *xlog.Logger, userID string, msgType string, msg MarshallableMessage) error
 }
 
 const (
@@ -60,11 +68,12 @@ func NewSignalingService(xl *xlog.Logger, conf *config.Config, accountCtl *Accou
 	}
 
 	return &SignalingService{
-		xl:         xl,
-		accountCtl: accountCtl,
-		roomCtl:    roomCtl,
-		pkTimeout:  pkTimeout,
-		rtcConfig:  conf.RTC,
+		xl:               xl,
+		accountCtl:       accountCtl,
+		roomCtl:          roomCtl,
+		pkRequestAnswers: make(map[pkRequest]chan bool),
+		pkTimeout:        pkTimeout,
+		rtcConfig:        conf.RTC,
 	}
 }
 
@@ -264,12 +273,50 @@ func (s *SignalingService) OnStartPK(xl *xlog.Logger, senderID string, msgBody [
 	return nil
 }
 
-func (s *SignalingService) waitPKTimeout(proposerID string, proposerRoomID string, receiverID string, receiverRoomID string) {
-	time.Sleep(s.pkTimeout)
-	err := s.onPKTimeout(proposerID, proposerRoomID, receiverID, receiverRoomID)
-	if err != nil {
-		s.xl.Warnf("failed to process pk request timeout, error %v", err)
+func (s *SignalingService) addPKRequest(proposerID string, proposerRoomID string, receiverID string, receiverRoomID string) chan bool {
+	s.pkRequestLock.Lock()
+	defer s.pkRequestLock.Unlock()
+	req := pkRequest{proposerID: proposerID, receiverID: receiverID}
+	answerChan := make(chan bool)
+	s.pkRequestAnswers[req] = answerChan
+	return answerChan
+}
+
+func (s *SignalingService) removePKRequest(proposerID string, proposerRoomID string, receiverID string, receiverRoomID string) {
+	s.pkRequestLock.Lock()
+	defer s.pkRequestLock.Unlock()
+	req := pkRequest{proposerID: proposerID, receiverID: receiverID}
+	delete(s.pkRequestAnswers, req)
+}
+
+func (s *SignalingService) answerPKRequest(proposerID string, proposerRoomID string, receiverID string, receiverRoomID string, accept bool) {
+	s.pkRequestLock.RLock()
+	defer s.pkRequestLock.RUnlock()
+	req := pkRequest{proposerID: proposerID, receiverID: receiverID}
+	answerChan, ok := s.pkRequestAnswers[req]
+	if ok {
+		s.xl.Debugf("PK answered: proposer %s, room %s, receiver %s, room %s, accept %v", proposerID, proposerRoomID, receiverID, receiverRoomID, accept)
+		answerChan <- accept
 	}
+}
+
+func (s *SignalingService) waitPKTimeout(proposerID string, proposerRoomID string, receiverID string, receiverRoomID string) {
+	t := time.NewTimer(s.pkTimeout)
+
+	pkAnswer := s.addPKRequest(proposerID, proposerRoomID, receiverID, receiverRoomID)
+	select {
+	case <-t.C:
+		err := s.onPKTimeout(proposerID, proposerRoomID, receiverID, receiverRoomID)
+		if err != nil {
+			s.xl.Warnf("failed to process pk request timeout, error %v", err)
+			return
+		}
+	case accept := <-pkAnswer:
+		s.removePKRequest(proposerID, proposerRoomID, receiverID, receiverRoomID)
+		s.xl.Debugf("PK answered: proposer %s, room %s, receiver %s, room %s, accept %v", proposerID, proposerRoomID, receiverID, receiverRoomID, accept)
+		return
+	}
+
 	return
 }
 
@@ -277,6 +324,8 @@ func (s *SignalingService) waitPKTimeout(proposerID string, proposerRoomID strin
 func (s *SignalingService) onPKTimeout(proposerID string, proposerRoomID string, receiverID string, receiverRoomID string) error {
 	shouldNoticeProposer := false
 	shouldNoticeReceiver := false
+	// 删除PK请求记录。
+	s.removePKRequest(proposerID, proposerRoomID, receiverID, receiverRoomID)
 	// 恢复状态至单人直播中。
 	// 恢复PK发起者状态。
 	proposer, err := s.accountCtl.GetActiveUserByID(s.xl, proposerID)
@@ -430,13 +479,23 @@ func (s *SignalingService) OnAnswerPK(xl *xlog.Logger, senderID string, msgBody 
 		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
 		return err
 	}
+	// 检查自身的房间状态。
+	if selfRoom.Status != protocol.LiveRoomStatusWaitPK {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorRoomNotInPK,
+			Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
+		}
+		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+		return err
+	}
 	// shouldResetStatus 如果响应PK时，出现对方房间不存在（已下播）、状态不对等异常情况，应重置当前直播间与用户状态为单人直播中。
 	shouldResetStatus := false
 	defer func(err error) {
 		if shouldResetStatus {
 			xl.Debugf("answer PK: error %v, reset room and user status", err)
 			selfActiveUser.Status = protocol.UserStatusSingleLive
-			selfActiveUser.Status = protocol.UserStatusSingleLive
+			selfRoom.Status = protocol.LiveRoomStatusSingle
 			_, updateErr := s.roomCtl.UpdateRoom(xl, selfRoom.ID, selfRoom)
 			if updateErr != nil {
 				xl.Warnf("failed to reset room %s, error %v", selfRoom.ID, updateErr)
@@ -447,7 +506,6 @@ func (s *SignalingService) OnAnswerPK(xl *xlog.Logger, senderID string, msgBody 
 			}
 		}
 	}(err)
-
 	pkRoom, err := s.roomCtl.GetRoomByID(xl, req.ReqRoomID)
 	if err != nil {
 		res := &protocol.AnswerPKResponse{
@@ -491,27 +549,16 @@ func (s *SignalingService) OnAnswerPK(xl *xlog.Logger, senderID string, msgBody 
 		return err
 	}
 
-	if req.Accept {
-		if selfRoom.Status != protocol.LiveRoomStatusWaitPK {
-			res := &protocol.AnswerPKResponse{
-				RPCID: req.RPCID,
-				Code:  errors.WSErrorRoomNotInPK,
-				Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
-			}
-			shouldResetStatus = true
-			s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
-			return err
+	// 检查PK对方的房间状态。
+	if pkRoom.Status != protocol.LiveRoomStatusWaitPK {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorRoomNotInPK,
+			Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
 		}
-		if pkRoom.Status != protocol.LiveRoomStatusWaitPK {
-			res := &protocol.AnswerPKResponse{
-				RPCID: req.RPCID,
-				Code:  errors.WSErrorRoomNotInPK,
-				Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
-			}
-			shouldResetStatus = true
-			s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
-			return err
-		}
+		shouldResetStatus = true
+		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+		return err
 	}
 	// 通知发起者
 	answerMessage := &protocol.PKAnswerNotify{
@@ -587,6 +634,7 @@ func (s *SignalingService) OnAnswerPK(xl *xlog.Logger, senderID string, msgBody 
 		}
 		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
 	}
+	s.answerPKRequest(pkPlayer.ID, pkRoom.ID, senderID, selfRoom.ID, req.Accept)
 	// 成功返回。
 	res := &protocol.AnswerPKResponse{
 		ReqRoomID: req.ReqRoomID,
@@ -658,6 +706,7 @@ func (s *SignalingService) OnEndPK(xl *xlog.Logger, senderID string, msgBody []b
 		s.Notify(xl, senderID, protocol.MT_EndPKResponse, res)
 		return err
 	}
+	// 找到对方主播的房间。
 	pkRoom, err := s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": pkAnchorID})
 	if err != nil {
 		res := &protocol.EndPKResponse{
@@ -676,6 +725,17 @@ func (s *SignalingService) OnEndPK(xl *xlog.Logger, senderID string, msgBody []b
 			Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
 		}
 		s.Notify(xl, senderID, protocol.MT_EndPKResponse, res)
+		return fmt.Errorf("room status not in PK")
+	}
+	// 检查房间ID是否匹配。
+	if selfRoom.ID != req.PKRoomID && pkRoom.ID != req.PKRoomID {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorNoPermission,
+			Error: errors.WSErrorToString[errors.WSErrorNoPermission],
+		}
+		s.Notify(xl, senderID, protocol.MT_EndPKResponse, res)
+		return fmt.Errorf("user %s does not have permission to end PK with room %s", senderID, req.PKRoomID)
 	}
 	// 向对方发送结束PK推送。
 	endMessage := &protocol.PKEndNotify{
