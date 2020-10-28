@@ -17,6 +17,9 @@ package controller
 import (
 	"crypto/sha1"
 	"fmt"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/qiniu/x/xlog"
 	rcsdk "github.com/rongcloud/server-sdk-go/v3/sdk"
@@ -28,6 +31,8 @@ import (
 const (
 	// DefaultPortraitURL 默认IM头像地址。
 	DefaultPortraitURL = "https://developer.rongcloud.cn/static/images/newversion-logo.png"
+	// DefaultCheckOnlinePeriod 轮询用户是否在线的时间间隔。
+	DefaultCheckOnlinePeriod = 5 * time.Second
 )
 
 // RongCloudIMController 融云IM控制器，执行IM用户及聊天室管理。
@@ -35,15 +40,27 @@ type RongCloudIMController struct {
 	appKey    string
 	appSecret string
 	// systemUserID 系统用户ID，发送到该ID的IM消息将被当作发送给系统的信令处理。
-	systemUserID    string
-	rongCloudClient *rcsdk.RongCloud
-	xl              *xlog.Logger
+	systemUserID     string
+	userLock         sync.RWMutex
+	userMap          map[string]*protocol.IMUser
+	signalingService *SignalingService
+	rongCloudClient  *rcsdk.RongCloud
+	xl               *xlog.Logger
 }
 
-// IMInterface IM用户管理相关接口。
+// 融云的IM消息类型。
+const (
+	RongCloudMessageTypeText = "RC:TxtMsg"
+)
+
+// IMInterface IM用户与消息管理相关接口。
 type IMInterface interface {
 	GetUserToken(xl *xlog.Logger, userID string) (*protocol.IMUser, error)
 	ProcessMessage(xl *xlog.Logger, msg interface{}) error
+	SendTextMessage(xl *xlog.Logger, userID string, msg string) error
+	UserOnline(xl *xlog.Logger, userID string) error
+	UserOffline(xl *xlog.Logger, userID string) error
+	WithSignalingService(s *SignalingService) IMInterface
 }
 
 // NewIMController 生成IM控制器。
@@ -53,7 +70,7 @@ func NewIMController(conf *config.IMConfig, xl *xlog.Logger) (IMInterface, error
 		if conf.RongCloud == nil {
 			return nil, fmt.Errorf("empty config for rongcloud IM")
 		}
-		return NewRongCloudIMController(conf.RongCloud.AppKey, conf.RongCloud.AppSecret, xl)
+		return NewRongCloudIMController(conf.RongCloud.AppKey, conf.RongCloud.AppSecret, conf.SystemUserID, xl)
 	case "test":
 		return &mockIMController{}, nil
 	default:
@@ -62,17 +79,25 @@ func NewIMController(conf *config.IMConfig, xl *xlog.Logger) (IMInterface, error
 }
 
 // NewRongCloudIMController 创建新的融云IM控制器。
-func NewRongCloudIMController(appKey string, appSecret string, xl *xlog.Logger) (*RongCloudIMController, error) {
+func NewRongCloudIMController(appKey string, appSecret string, systemUserID string, xl *xlog.Logger) (*RongCloudIMController, error) {
 	if xl == nil {
 		xl = xlog.New("qlive-rongcloud-im-controller")
 	}
 
-	return &RongCloudIMController{
+	c := &RongCloudIMController{
 		appKey:          appKey,
 		appSecret:       appSecret,
+		systemUserID:    systemUserID,
+		userMap:         map[string]*protocol.IMUser{},
 		rongCloudClient: rcsdk.NewRongCloud(appKey, appSecret),
 		xl:              xl,
-	}, nil
+	}
+	_, err := c.GetUserToken(xl, systemUserID)
+	if err != nil {
+		xl.Errorf("failed to get user token for system user %s, error %v", systemUserID, err)
+		return nil, err
+	}
+	return c, nil
 }
 
 // GetUserToken 用户注册，生成User token
@@ -85,11 +110,18 @@ func (c *RongCloudIMController) GetUserToken(xl *xlog.Logger, userID string) (*p
 		xl.Errorf("failed to get user token from rongcloud, error %v", err)
 		return nil, err
 	}
-	return &protocol.IMUser{
-		UserID:   userRes.UserID,
-		Username: userRes.UserID,
-		Token:    userRes.Token,
-	}, nil
+	now := time.Now()
+	imUser := &protocol.IMUser{
+		UserID:           userRes.UserID,
+		Username:         userRes.UserID,
+		Token:            userRes.Token,
+		LastRegisterTime: now,
+		LastOnlineTime:   now,
+	}
+	c.userLock.Lock()
+	c.userMap[userID] = imUser
+	c.userLock.Unlock()
+	return imUser, nil
 }
 
 func (c *RongCloudIMController) validateSignature(sign protocol.RongCloudSignature) bool {
@@ -102,10 +134,25 @@ func (c *RongCloudIMController) processMessage(xl *xlog.Logger, msg *protocol.Ro
 		xl = c.xl
 	}
 
-	if msg.ObjectName == "RC:TxtMsg" && msg.ToUserID == c.systemUserID {
-		xl.Debugf("msg content %+v", msg.Content)
+	if msg.ObjectName == RongCloudMessageTypeText && msg.ToUserID == c.systemUserID {
+		textContent := msg.Content.Content
+		// 当信令服务使用im时，处理信令消息。
+		if c.isSignalingMessage(textContent) && c.signalingService != nil {
+			xl.Debugf("signaling message %s", textContent)
+			c.signalingService.OnMessage(xl, msg.FromUserID, []byte(textContent))
+		}
 	}
 	return nil
+}
+
+func (c *RongCloudIMController) isSignalingMessage(msg string) bool {
+	parts := strings.SplitN(msg, "=", 2)
+	if len(parts) < 2 {
+		return false
+	}
+	msgType := parts[0]
+	msgBody := parts[1]
+	return (len(msgType) > 0) && (msgBody[0] == '{' && msgBody[len(msgBody)-1] == '}')
 }
 
 // ProcessMessage 处理通过回调收到的消息。
@@ -115,6 +162,64 @@ func (c *RongCloudIMController) ProcessMessage(xl *xlog.Logger, msg interface{})
 		return fmt.Errorf("incorrect message type")
 	}
 	return c.processMessage(xl, rcMsg)
+}
+
+// WithSignalingService 设置信令处理服务。
+func (c *RongCloudIMController) WithSignalingService(s *SignalingService) IMInterface {
+	if s != nil {
+		c.signalingService = s
+		s.Notify = c.sendSignalingMessage
+		return c
+	}
+	return c
+}
+
+func (c *RongCloudIMController) sendSignalingMessage(xl *xlog.Logger, userID string, msgType string, msg MarshallableMessage) error {
+	buf, err := msg.Marshal()
+	if err != nil {
+		return err
+	}
+	err = c.SendTextMessage(xl, userID, msgType+"="+string(buf))
+	return err
+}
+
+// SendTextMessage 发送文字消息。
+func (c *RongCloudIMController) SendTextMessage(xl *xlog.Logger, userID string, content string) error {
+	if xl == nil {
+		xl = c.xl
+	}
+	rcTXTMsg := &rcsdk.TXTMsg{
+		Content: content,
+	}
+	err := c.rongCloudClient.PrivateSend(c.systemUserID, []string{userID}, RongCloudMessageTypeText, rcTXTMsg, "", "",
+		0, 0, 0, 0, 0)
+	if err != nil {
+		xl.Infof("failed to send message to %s, error %v", userID, err)
+		return err
+	}
+	xl.Debugf("send message %s to %s", content, userID)
+	return nil
+}
+
+// UserOnline 用户上线。
+func (c *RongCloudIMController) UserOnline(xl *xlog.Logger, userID string) error {
+	if xl == nil {
+		xl = c.xl
+	}
+	xl.Infof("user %s IM online", userID)
+	return nil
+}
+
+// UserOffline 用户下线。
+func (c *RongCloudIMController) UserOffline(xl *xlog.Logger, userID string) error {
+	if xl == nil {
+		xl = c.xl
+	}
+	xl.Infof("user %s IM offline", userID)
+	if c.signalingService != nil {
+		c.signalingService.OnUserOffline(xl, userID)
+	}
+	return nil
 }
 
 type mockIMController struct{}
@@ -128,5 +233,21 @@ func (m *mockIMController) GetUserToken(xl *xlog.Logger, userID string) (*protoc
 }
 
 func (m *mockIMController) ProcessMessage(xl *xlog.Logger, msg interface{}) error {
+	return nil
+}
+
+func (m *mockIMController) SendTextMessage(xl *xlog.Logger, userID string, msg string) error {
+	return nil
+}
+
+func (m *mockIMController) WithSignalingService(s *SignalingService) IMInterface {
+	return m
+}
+
+func (m *mockIMController) UserOnline(xl *xlog.Logger, userID string) error {
+	return nil
+}
+
+func (m *mockIMController) UserOffline(xl *xlog.Logger, userID string) error {
 	return nil
 }

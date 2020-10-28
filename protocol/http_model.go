@@ -220,6 +220,25 @@ type RongCloudMessageContent struct {
 	Extra   string            `json:"extra,omitempty"`
 }
 
+// RongCloudUserStatusResp 融云的用户状态变化回调的消息体。
+type RongCloudUserStatusResp struct {
+	Signature   RongCloudSignature `form:"-"`
+	UserID      string             `form:"userid" json:"userid"`
+	Status      string             `form:"status" json:"status"`
+	OS          string             `form:"os" json:"os"`
+	TimestampMS int64              `form:"time" json:"time"`
+	ClientIP    string             `form:"clientIp" json:"clientIp"`
+}
+
+// RongCloudUserStatus 融云用户状态变化回调中指定的用户的在线状态，分为 0 在线、1 离线、2 登出。
+type RongCloudUserStatus string
+
+const (
+	RongCloudUserOnline  RongCloudUserStatus = "0"
+	RongClouduserOffline RongCloudUserStatus = "1"
+	RongCloudUserLogout  RongCloudUserStatus = "2"
+)
+
 // GetUploadTokenArgs 获取上传文件token的参数。
 type GetUploadTokenArgs struct {
 	Filename      string `json:"filename"`      // 上传资源的文件名（key）
