@@ -447,6 +447,16 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 		c.Notify(protocol.MT_AnswerPKResponse, res)
 		return
 	}
+	// 判断自己的用户状态和房间是否在等待PK状态。
+	if selfRoom.Status != protocol.LiveRoomStatusWaitPK || selfActiveUser.Status != protocol.UserStatusPKWait {
+		res := &protocol.AnswerPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorRoomNotInPK,
+			Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
+		}
+		c.Notify(protocol.MT_AnswerPKResponse, res)
+		return
+	}
 	// shouldResetStatus 如果响应PK时，出现对方房间不存在（已下播）、状态不对等异常情况，应重置当前直播间与用户状态为单人直播中。
 	shouldResetStatus := false
 	defer func(err error) {
@@ -488,17 +498,7 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 		c.Notify(protocol.MT_AnswerPKResponse, res)
 		return
 	}
-	// 判断是否双方房间都在等待PK状态。
-	if selfRoom.Status != protocol.LiveRoomStatusWaitPK {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorRoomNotInPK,
-			Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
-		}
-		shouldResetStatus = true
-		c.Notify(protocol.MT_AnswerPKResponse, res)
-		return
-	}
+	// 判断对方的房间是否为等待PK状态。
 	if pkRoom.Status != protocol.LiveRoomStatusWaitPK {
 		res := &protocol.AnswerPKResponse{
 			RPCID: req.RPCID,
@@ -646,6 +646,18 @@ func (c *WSClient) onEndPK(ctx context.Context, m msgpump.Message) {
 		return
 	}
 
+	// 状态检查
+	// PK 房间状态必须为PK中
+	if pkRoom.Status != protocol.LiveRoomStatusPK {
+		res := &protocol.EndPKResponse{
+			RPCID: req.RPCID,
+			Code:  errors.WSErrorRoomNotInPK,
+			Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
+		}
+		c.Notify(protocol.MT_EndPKResponse, res)
+		return
+	}
+
 	var otherPlayerID string
 	if selfPlayer.ID == pkRoom.Creator {
 		otherPlayerID = pkRoom.PKAnchor
@@ -684,23 +696,12 @@ func (c *WSClient) onEndPK(ctx context.Context, m msgpump.Message) {
 		return
 	}
 
-	// 权限检查
-	if req.PKRoomID != selfActiveUser.Room {
+	// 权限检查:当前用户必须是所请求房间的创建者或PK主播。
+	if pkRoom.Creator != selfPlayer.ID && pkRoom.PKAnchor != selfPlayer.ID {
 		res := &protocol.EndPKResponse{
 			RPCID: req.RPCID,
 			Code:  errors.WSErrorNoPermission,
 			Error: errors.WSErrorToString[errors.WSErrorNoPermission],
-		}
-		c.Notify(protocol.MT_EndPKResponse, res)
-		return
-	}
-
-	// 状态检查
-	if pkRoom.Status != protocol.LiveRoomStatusPK {
-		res := &protocol.EndPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorRoomNotInPK,
-			Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
 		}
 		c.Notify(protocol.MT_EndPKResponse, res)
 		return
