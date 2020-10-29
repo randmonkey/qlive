@@ -16,6 +16,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/qiniu/x/xlog"
@@ -115,16 +116,31 @@ func (h *IMHandler) OnUserStatusChange(c *gin.Context) {
 	provider := c.Param("provider")
 	switch provider {
 	case "rongcloud":
-		statusList := []*protocol.RongCloudUserStatusResp{}
-		err := c.ShouldBindJSON(&statusList)
-		if err != nil {
-			xl.Infof("failed to parse rongcloud user status, error %v", err)
-			httpErr := errors.NewHTTPErrorBadRequest().WithRequestID(requestID).WithMessage("invalid message body")
-			c.JSON(http.StatusBadRequest, httpErr)
-			return
+		statusList := map[int]*protocol.RongCloudUserStatus{}
+
+		for i := 0; ; i++ {
+			m := c.PostFormMap(strconv.Itoa(i))
+			if m == nil || len(m) == 0 {
+				break
+			}
+			userID := m["userid"]
+			status := m["status"]
+			userOS := m["os"]
+			clientIP := m["clientIp"]
+			if userID == "" || status == "" || userOS == "" || clientIP == "" {
+				continue
+			}
+			userStatus := &protocol.RongCloudUserStatus{
+				UserID:   userID,
+				Status:   status,
+				OS:       userOS,
+				ClientIP: clientIP,
+			}
+			statusList[i] = userStatus
 		}
+
 		sign := &protocol.RongCloudSignature{}
-		err = c.ShouldBindQuery(sign)
+		err := c.ShouldBindQuery(sign)
 		if err != nil {
 			xl.Infof("failed to get rongcloud signature, error %v", err)
 			httpErr := errors.NewHTTPErrorBadRequest().WithRequestID(requestID).WithMessage("invalid message signature")
@@ -144,7 +160,7 @@ func (h *IMHandler) OnUserStatusChange(c *gin.Context) {
 				xl.Debugf("user %s rongcloud IM logout", userID)
 				h.IMService.UserOffline(xl, userID)
 			default:
-				xl.Infof("user %s undefined status %s", userID, status.Status)
+				xl.Debugf("user %s undefined status %s", userID, status.Status)
 			}
 		}
 	default:
