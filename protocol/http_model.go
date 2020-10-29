@@ -221,7 +221,7 @@ type RongCloudMessageContent struct {
 }
 
 // RongCloudUserStatusResp 融云的用户状态变化回调的消息体。
-type RongCloudUserStatusResp struct {
+type RongCloudUserStatus struct {
 	Signature   RongCloudSignature `form:"-"`
 	UserID      string             `form:"userid" json:"userid"`
 	Status      string             `form:"status" json:"status"`
@@ -231,12 +231,12 @@ type RongCloudUserStatusResp struct {
 }
 
 // RongCloudUserStatus 融云用户状态变化回调中指定的用户的在线状态，分为 0 在线、1 离线、2 登出。
-type RongCloudUserStatus string
+type RongCloudUserOnlineStatus string
 
 const (
-	RongCloudUserOnline  RongCloudUserStatus = "0"
-	RongClouduserOffline RongCloudUserStatus = "1"
-	RongCloudUserLogout  RongCloudUserStatus = "2"
+	RongCloudUserOnline  RongCloudUserOnlineStatus = "0"
+	RongClouduserOffline RongCloudUserOnlineStatus = "1"
+	RongCloudUserLogout  RongCloudUserOnlineStatus = "2"
 )
 
 // GetUploadTokenArgs 获取上传文件token的参数。
