@@ -96,7 +96,7 @@ func (c *WSClient) Notify(t string, v PMessage) {
 	}
 
 	if t != protocol.MT_Ping && t != protocol.MT_Pong {
-		c.xl.Infof("message to %v, %v=%v", c.playerID, t, string(m))
+		c.xl.Infof("message to %v at %s:%s, %v=%v", c.playerID, c.remoteAddr, c.remotePort, t, string(m))
 	}
 
 	if ok := c.p.TryOutput(t, m); !ok {
@@ -124,6 +124,7 @@ func (c *WSClient) monitor() {
 		for {
 			select {
 			case <-time.After(time.Second * time.Duration(c.s.conf.WsConf.PingTickerSecond)):
+				c.xl.Debugf("ping %s at %s:%s", c.playerID, c.remoteAddr, c.remotePort)
 				c.Notify(protocol.MT_Ping, ping)
 				if time.Now().Sub(c.lastMessageTime) > time.Second*time.Duration(c.s.conf.WsConf.PongTimeoutSecond) {
 					c.xl.Infof("%v pingpong timeout", c.playerID)
@@ -145,7 +146,7 @@ func (c *WSClient) parallelProcess(ctx context.Context, t string, m msgpump.Mess
 	defer c.recover()
 
 	if t != protocol.MT_Ping && t != protocol.MT_Pong {
-		c.xl.Infof("message from %v, %v=%v", c.playerID, t, string(m))
+		c.xl.Infof("message from %v at %s:%s, %v=%v", c.playerID, c.remoteAddr, c.remotePort, t, string(m))
 	}
 
 	if !c.IsOnline() && t != protocol.MT_AuthorizeRequest {
@@ -236,12 +237,15 @@ func (c *WSClient) onDisconnect(ctx context.Context, m msgpump.Message) {
 	var notify protocol.DisconnectNotify
 	err := notify.Unmarshal(m)
 	if err != nil {
-		c.xl.Errorf("unknown disconnect message: %v", m)
+		c.xl.Errorf("unknown disconnect message: %v from %s", m, c.playerID)
 		return
 	}
+	err = c.s.RemovePlayer(c.playerID)
+	if err != nil {
+		c.xl.Errorf("failed to remove player, error %v", err)
+	}
+	c.xl.Infof("%v at %s:%s take the initiative to disconnect.", c.playerID, c.remoteAddr, c.remotePort)
 	close(c.disconnectChan)
-	c.s.RemovePlayer(c.playerID)
-	c.xl.Infof("%v take the initiative to disconnect.", c.playerID)
 }
 
 // WSServer WebSocket Server
@@ -295,10 +299,16 @@ func (s *WSServer) RemovePlayer(id string) error {
 	s.cl.Lock()
 	defer s.cl.Unlock()
 
-	if _, ok := s.conns[id]; !ok {
+	c, ok := s.conns[id]
+	if !ok {
+		s.xl.Errorf("user %s not online", id)
 		return errors.NewWSError("player not online")
 	}
-	s.signaling.OnUserOffline(s.xl, id)
+	c.xl.Infof("player %s at %s:%s will be removed", id, c.remoteAddr, c.remotePort)
+	err := s.signaling.OnUserOffline(c.xl, id)
+	if err != nil {
+		c.xl.Errorf("failed to process user %s offline at %s:%s", id, c.remoteAddr, c.remotePort)
+	}
 	delete(s.conns, id)
 	return nil
 }
@@ -312,11 +322,13 @@ func (s *WSServer) NotifyPlayer(id string, t string, v PMessage) error {
 }
 
 func (s *WSServer) notifyPlayer(id string, t string, v PMessage) error {
-	player, ok := s.conns[id]
-	if !ok || !player.IsOnline() {
+	playerConn, ok := s.conns[id]
+	if !ok || !playerConn.IsOnline() {
+		s.xl.Debugf("player %s not found or not online", id)
 		return errors.NewWSError("player not online")
 	}
-	player.Notify(t, v)
+	s.xl.Debugf("notify player %s at connection %s:%s", id, playerConn.remoteAddr, playerConn.remotePort)
+	playerConn.Notify(t, v)
 
 	return nil
 }

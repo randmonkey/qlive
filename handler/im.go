@@ -123,6 +123,7 @@ func (h *IMHandler) OnUserStatusChange(c *gin.Context) {
 			if m == nil || len(m) == 0 {
 				break
 			}
+			xl.Debugf("user %d: status map %v", i, m)
 			userID := m["userid"]
 			status := m["status"]
 			userOS := m["os"]

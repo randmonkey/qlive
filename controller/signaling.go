@@ -805,18 +805,18 @@ func (s *SignalingService) OnEndPK(xl *xlog.Logger, senderID string, msgBody []b
 }
 
 // OnUserOffline 处理客户端下线。
-func (s *SignalingService) OnUserOffline(xl *xlog.Logger, userID string) {
+func (s *SignalingService) OnUserOffline(xl *xlog.Logger, userID string) error {
 	user, err := s.accountCtl.GetActiveUserByID(xl, userID)
 	if err != nil {
 		xl.Warnf("user %s not logged in but offlined", userID)
-		return
+		return err
 	}
 	// 如果用户直播中，找出用户的房间。
 	var room *protocol.LiveRoom
 	if protocol.IsUserBroadCasting(user.Status) {
 		room, err = s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": userID})
 		if err != nil {
-			xl.Warnf("cannot find user %s's room but status is PK live", userID)
+			xl.Warnf("cannot find user %s's room but user status is %v", userID, user.Status)
 		}
 	}
 	// 如果是PK状态，向其PK对方发送消息。
@@ -850,8 +850,9 @@ func (s *SignalingService) OnUserOffline(xl *xlog.Logger, userID string) {
 		err := s.roomCtl.CloseRoom(s.xl, userID, room.ID)
 		if err != nil {
 			s.xl.Errorf("close room %s created by %s failed, error %v", room.ID, userID, err)
-		} else {
-			s.xl.Infof("room %s created by %s has been closed", room.ID, userID)
+			return err
 		}
+		s.xl.Infof("room %s created by %s has been closed", room.ID, userID)
 	}
+	return nil
 }
