@@ -15,6 +15,8 @@
 package handler
 
 import (
+	"bytes"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 
@@ -117,7 +119,13 @@ func (h *IMHandler) OnUserStatusChange(c *gin.Context) {
 	switch provider {
 	case "rongcloud":
 		statusList := map[int]*protocol.RongCloudUserStatus{}
-
+		bodyBuf, err := ioutil.ReadAll(c.Request.Body)
+		if err != nil {
+			xl.Errorf("failed to read request body")
+		}
+		xl.Debugf("rongcloud user status callback, request body: %s", string(bodyBuf))
+		// refill body
+		c.Request.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBuf))
 		for i := 0; ; i++ {
 			m := c.PostFormMap(strconv.Itoa(i))
 			if m == nil || len(m) == 0 {
@@ -141,7 +149,7 @@ func (h *IMHandler) OnUserStatusChange(c *gin.Context) {
 		}
 
 		sign := &protocol.RongCloudSignature{}
-		err := c.ShouldBindQuery(sign)
+		err = c.ShouldBindQuery(sign)
 		if err != nil {
 			xl.Infof("failed to get rongcloud signature, error %v", err)
 			httpErr := errors.NewHTTPErrorBadRequest().WithRequestID(requestID).WithMessage("invalid message signature")
