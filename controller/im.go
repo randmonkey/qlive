@@ -138,6 +138,8 @@ func (c *RongCloudIMController) processMessage(xl *xlog.Logger, msg *protocol.Ro
 		textContent := msg.Content.Content
 		// 当信令服务使用im时，处理信令消息。
 		if c.isSignalingMessage(textContent) && c.signalingService != nil {
+			msgTime := time.Unix(msg.MsgTimestampMS/1000, (msg.MsgTimestampMS%1000)*1000*1000)
+			c.setUserOnlineTime(xl, msg.FromUserID, msgTime)
 			xl.Debugf("signaling message %s", textContent)
 			c.signalingService.OnMessage(xl, msg.FromUserID, []byte(textContent))
 		}
@@ -169,9 +171,58 @@ func (c *RongCloudIMController) WithSignalingService(s *SignalingService) IMInte
 	if s != nil {
 		c.signalingService = s
 		s.Notify = c.sendSignalingMessage
+		go c.pingUserLoop()
 		return c
 	}
 	return c
+}
+
+func (c *RongCloudIMController) pingUserLoop() {
+	t := time.NewTicker(5 * time.Second)
+	for {
+		select {
+		case <-t.C:
+			c.pingUsers()
+			c.removeInactiveUsers()
+		}
+	}
+}
+
+func (c *RongCloudIMController) pingUsers() {
+	c.userLock.RLock()
+	defer c.userLock.Unlock()
+	for userID := range c.userMap {
+		if userID == c.systemUserID {
+			continue
+		}
+		c.sendSignalingMessage(c.xl, userID, protocol.MT_Ping, &protocol.Ping{})
+	}
+}
+
+func (c *RongCloudIMController) removeInactiveUsers() {
+	c.userLock.RLock()
+	defer c.userLock.Unlock()
+	for userID, user := range c.userMap {
+		if userID == c.systemUserID {
+			continue
+		}
+		if user.LastOnlineTime.Before(time.Now().Add(-20 * time.Second)) {
+			c.xl.Infof("user %s last online time %v, seems to be offlined", userID, user.LastOnlineTime)
+			if c.signalingService != nil {
+				c.signalingService.OnUserOffline(c.xl, userID)
+			}
+			delete(c.userMap, userID)
+		}
+	}
+}
+
+func (c *RongCloudIMController) setUserOnlineTime(xl *xlog.Logger, userID string, t time.Time) {
+	c.userLock.RLock()
+	defer c.userLock.RUnlock()
+	user, ok := c.userMap[userID]
+	if ok {
+		user.LastOnlineTime = t
+	}
 }
 
 func (c *RongCloudIMController) sendSignalingMessage(xl *xlog.Logger, userID string, msgType string, msg MarshallableMessage) error {
