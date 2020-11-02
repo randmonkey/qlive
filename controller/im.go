@@ -171,7 +171,7 @@ func (c *RongCloudIMController) WithSignalingService(s *SignalingService) IMInte
 	if s != nil {
 		c.signalingService = s
 		s.Notify = c.sendSignalingMessage
-		go c.pingUserLoop()
+		// go c.pingUserLoop()
 		return c
 	}
 	return c
@@ -217,10 +217,14 @@ func (c *RongCloudIMController) removeInactiveUsers() {
 }
 
 func (c *RongCloudIMController) setUserOnlineTime(xl *xlog.Logger, userID string, t time.Time) {
+	if xl == nil {
+		xl = c.xl
+	}
 	c.userLock.RLock()
 	defer c.userLock.RUnlock()
 	user, ok := c.userMap[userID]
 	if ok {
+		xl.Debugf("user %s, last online time %v", userID, t)
 		user.LastOnlineTime = t
 	}
 }

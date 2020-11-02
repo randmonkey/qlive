@@ -16,6 +16,7 @@ package handler
 
 import (
 	"bytes"
+	"encoding/json"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -118,7 +119,7 @@ func (h *IMHandler) OnUserStatusChange(c *gin.Context) {
 	provider := c.Param("provider")
 	switch provider {
 	case "rongcloud":
-		statusList := map[int]*protocol.RongCloudUserStatus{}
+		statusList := []*protocol.RongCloudUserStatus{}
 		bodyBuf, err := ioutil.ReadAll(c.Request.Body)
 		if err != nil {
 			xl.Errorf("failed to read request body")
@@ -126,26 +127,30 @@ func (h *IMHandler) OnUserStatusChange(c *gin.Context) {
 		xl.Debugf("rongcloud user status callback, request body: %s", string(bodyBuf))
 		// refill body
 		c.Request.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBuf))
-		for i := 0; ; i++ {
-			m := c.PostFormMap(strconv.Itoa(i))
-			if m == nil || len(m) == 0 {
-				break
+		err = json.Unmarshal(bodyBuf, &statusList)
+		if err != nil {
+			xl.Debugf("failed to parse body as JSON, try to parse as form")
+			for i := 0; ; i++ {
+				m := c.PostFormMap(strconv.Itoa(i))
+				if m == nil || len(m) == 0 {
+					break
+				}
+				xl.Debugf("user %d: status map %v", i, m)
+				userID := m["userid"]
+				status := m["status"]
+				userOS := m["os"]
+				clientIP := m["clientIp"]
+				if userID == "" || status == "" || userOS == "" || clientIP == "" {
+					continue
+				}
+				userStatus := &protocol.RongCloudUserStatus{
+					UserID:   userID,
+					Status:   status,
+					OS:       userOS,
+					ClientIP: clientIP,
+				}
+				statusList = append(statusList, userStatus)
 			}
-			xl.Debugf("user %d: status map %v", i, m)
-			userID := m["userid"]
-			status := m["status"]
-			userOS := m["os"]
-			clientIP := m["clientIp"]
-			if userID == "" || status == "" || userOS == "" || clientIP == "" {
-				continue
-			}
-			userStatus := &protocol.RongCloudUserStatus{
-				UserID:   userID,
-				Status:   status,
-				OS:       userOS,
-				ClientIP: clientIP,
-			}
-			statusList[i] = userStatus
 		}
 
 		sign := &protocol.RongCloudSignature{}

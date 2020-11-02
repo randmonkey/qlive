@@ -101,6 +101,8 @@ func (s *SignalingService) OnMessage(xl *xlog.Logger, senderID string, msg []byt
 		return s.OnAnswerPK(xl, senderID, msgBody)
 	case protocol.MT_EndPKRequest:
 		return s.OnEndPK(xl, senderID, msgBody)
+	case protocol.MT_DisconnectNotify:
+		return s.OnUserOffline(xl, senderID)
 	}
 	return nil
 }
@@ -806,11 +808,15 @@ func (s *SignalingService) OnEndPK(xl *xlog.Logger, senderID string, msgBody []b
 
 // OnUserOffline 处理客户端下线。
 func (s *SignalingService) OnUserOffline(xl *xlog.Logger, userID string) error {
+	if xl == nil {
+		xl = s.xl
+	}
 	user, err := s.accountCtl.GetActiveUserByID(xl, userID)
 	if err != nil {
 		xl.Warnf("user %s not logged in but offlined", userID)
 		return err
 	}
+	xl.Debugf("user %s offline:processing start, current status %v, in room %s", userID, user.Status, user.Room)
 	// 如果用户直播中，找出用户的房间。
 	var room *protocol.LiveRoom
 	if protocol.IsUserBroadCasting(user.Status) {
@@ -818,6 +824,7 @@ func (s *SignalingService) OnUserOffline(xl *xlog.Logger, userID string) error {
 		if err != nil {
 			xl.Warnf("cannot find user %s's room but user status is %v", userID, user.Status)
 		}
+		xl.Debugf("will close room %s", room.ID)
 	}
 	// 如果是PK状态，向其PK对方发送消息。
 	if user.Status == protocol.UserStatusPKLive {
@@ -841,18 +848,16 @@ func (s *SignalingService) OnUserOffline(xl *xlog.Logger, userID string) error {
 				}
 			}
 		}
-		// 修改该用户状态为空闲。
-		user.Status = protocol.UserStatusIdle
-		s.accountCtl.UpdateActiveUser(s.xl, userID, user)
 	}
 	// 关闭该房间。
 	if room != nil {
-		err := s.roomCtl.CloseRoom(s.xl, userID, room.ID)
+		err := s.roomCtl.CloseRoom(xl, userID, room.ID)
 		if err != nil {
-			s.xl.Errorf("close room %s created by %s failed, error %v", room.ID, userID, err)
+			xl.Errorf("close room %s created by %s failed, error %v", room.ID, userID, err)
 			return err
 		}
-		s.xl.Infof("room %s created by %s has been closed", room.ID, userID)
+		xl.Infof("room %s created by %s has been closed", room.ID, userID)
 	}
+	xl.Debugf("user %s offline:processing end", userID)
 	return nil
 }

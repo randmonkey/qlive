@@ -151,20 +151,26 @@ func (c *RoomController) CloseRoom(xl *xlog.Logger, userID string, roomID string
 	err := c.roomColl.Find(context.Background(), bson.M{"_id": roomID, "creator": userID}).One(&room)
 	if err != nil {
 		if qmgo.IsErrNoDocuments(err) {
-			xl.Infof("cannot found room %s created by user %s", roomID, userID)
+			xl.Infof("cannot find room %s created by user %s", roomID, userID)
 			return &errors.ServerError{Code: errors.ServerErrorRoomNotFound}
 		}
 		return err
 	}
+
 	err = c.roomColl.RemoveId(context.Background(), roomID)
 	if err != nil {
 		xl.Errorf("failed to remove room ID %s, error %v", roomID, err)
 		return err
 	}
-	// 修改创建者及所有观众状态为空闲，所在房间为空。
-	_, err = c.activeUserColl.UpdateAll(context.Background(), bson.M{"room": roomID}, bson.M{"$set": bson.M{"room": "", "status": protocol.UserStatusIdle}})
+	// 修改创建者状态为空闲。
+	err = c.activeUserColl.UpdateOne(context.Background(), bson.M{"_id": userID}, bson.M{"$set": bson.M{"room": "", "status": protocol.UserStatusIdle}})
 	if err != nil {
-		xl.Errorf("failed to update status of users in room %s, error %v", roomID, err)
+		xl.Errorf("failed to update status of room %s's creator %s, error %v", roomID, userID, err)
+	}
+	// 修改所有观众状态为空闲，所在房间为空。
+	_, err = c.activeUserColl.UpdateAll(context.Background(), bson.M{"room": roomID, "status": protocol.UserStatusWatching}, bson.M{"$set": bson.M{"room": "", "status": protocol.UserStatusIdle}})
+	if err != nil {
+		xl.Errorf("failed to update status of audiences in room %s, error %v", roomID, err)
 	}
 	return nil
 }

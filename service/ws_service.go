@@ -240,6 +240,7 @@ func (c *WSClient) onDisconnect(ctx context.Context, m msgpump.Message) {
 		c.xl.Errorf("unknown disconnect message: %v from %s", m, c.playerID)
 		return
 	}
+	c.xl.Infof("%v at %s:%s requested to disconnect", c.playerID, c.remoteAddr, c.remotePort)
 	err = c.s.RemovePlayer(c.playerID)
 	if err != nil {
 		c.xl.Errorf("failed to remove player, error %v", err)
@@ -310,6 +311,7 @@ func (s *WSServer) RemovePlayer(id string) error {
 		c.xl.Errorf("failed to process user %s offline at %s:%s", id, c.remoteAddr, c.remotePort)
 	}
 	delete(s.conns, id)
+	c.xl.Debugf("player %s at %s:%s deleted from connections", id, c.remoteAddr, c.remotePort)
 	return nil
 }
 
