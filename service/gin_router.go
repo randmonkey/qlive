@@ -107,7 +107,10 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		IMService: imController,
 	}
 	if conf.Signaling.Type == "im" {
-		signalingService := controller.NewSignalingService(nil, conf, accountController, roomController)
+		signalingService, err := controller.NewSignalingService(nil, conf)
+		if err != nil {
+			return nil, err
+		}
 		imHandler.IMService = imHandler.IMService.WithSignalingService(signalingService)
 	}
 

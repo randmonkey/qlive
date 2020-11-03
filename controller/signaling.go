@@ -56,7 +56,7 @@ const (
 )
 
 // NewSignalingService 创建新的控制信息服务。
-func NewSignalingService(xl *xlog.Logger, conf *config.Config, accountCtl *AccountController, roomCtl *RoomController) *SignalingService {
+func NewSignalingService(xl *xlog.Logger, conf *config.Config) *SignalingService {
 	if xl == nil {
 		xl = xlog.New("qlive-signaling-service")
 	}
@@ -67,6 +67,8 @@ func NewSignalingService(xl *xlog.Logger, conf *config.Config, accountCtl *Accou
 		pkTimeout = time.Duration(conf.Signaling.PKRequestTimeoutSecond) * time.Second
 	}
 
+	accountCtl, _ := NewAccountController(conf.Mongo.URI, conf.Mongo.Database, xl)
+	roomCtl, _ := NewRoomController(conf.Mongo.URI, conf.Mongo.Database, xl)
 	return &SignalingService{
 		xl:               xl,
 		accountCtl:       accountCtl,
@@ -817,18 +819,20 @@ func (s *SignalingService) OnUserOffline(xl *xlog.Logger, userID string) error {
 		return err
 	}
 	xl.Debugf("user %s offline:processing start, current status %v, in room %s", userID, user.Status, user.Room)
-	// 如果用户直播中，找出用户的房间。
-	var room *protocol.LiveRoom
-	if protocol.IsUserBroadCasting(user.Status) {
-		room, err = s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": userID})
-		if err != nil {
-			xl.Warnf("cannot find user %s's room but user status is %v", userID, user.Status)
-		}
-		xl.Debugf("will close room %s", room.ID)
+	// 找出用户的房间。
+	room, err := s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": userID})
+	if err != nil {
+		xl.Debugf("cannot find user %s's room, user status is %v, error %v", userID, user.Status, err)
 	}
+	if room != nil {
+		xl.Debugf("will close room %s created by user %s", room.ID, userID)
+	}
+
 	// 如果是PK状态，向其PK对方发送消息。
 	if user.Status == protocol.UserStatusPKLive {
+		xl.Debugf("user %s is in PK, try to notify PK anchor", userID)
 		if room != nil {
+			xl.Debugf("user %s's room %s is in PK, try to notify PK anchor %s", userID, room.ID, room.PKAnchor)
 			pkAnchorID := room.PKAnchor
 			endMessage := &protocol.PKEndNotify{
 				PKRoomID: room.ID,

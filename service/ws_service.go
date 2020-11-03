@@ -179,7 +179,15 @@ func (c *WSClient) recover() {
 		const size = 16 << 10
 		buf := make([]byte, size)
 		buf = buf[:runtime.Stack(buf, false)]
-		c.xl.Error("process panic: ", c.playerID, e, fmt.Sprintf("\n%s", buf))
+		var xl *xlog.Logger
+		if c == nil {
+			xl = xlog.New("ws-client-recover-nil-client")
+		} else if c.xl == nil {
+			xl = xlog.New("ws-client-recover-nil-logger")
+		} else {
+			xl = c.xl
+		}
+		xl.Error("process panic: ", c.playerID, e, fmt.Sprintf("\n%s", buf))
 	}
 }
 
@@ -371,7 +379,7 @@ func NewWSServer(conf *config.Config) (s *WSServer, err error) {
 		return nil, err
 	}
 
-	signalingService := controller.NewSignalingService(nil, conf, s.accountCtl, s.roomCtl)
+	signalingService, err := controller.NewSignalingService(nil, conf)
 	signalingService.Notify = func(xl *xlog.Logger, userID string, msgType string, msg controller.MarshallableMessage) error {
 		return s.NotifyPlayer(userID, msgType, msg)
 	}
