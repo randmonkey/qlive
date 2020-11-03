@@ -56,7 +56,7 @@ const (
 )
 
 // NewSignalingService 创建新的控制信息服务。
-func NewSignalingService(xl *xlog.Logger, conf *config.Config) *SignalingService {
+func NewSignalingService(xl *xlog.Logger, conf *config.Config) (*SignalingService, error) {
 	if xl == nil {
 		xl = xlog.New("qlive-signaling-service")
 	}
@@ -67,8 +67,16 @@ func NewSignalingService(xl *xlog.Logger, conf *config.Config) *SignalingService
 		pkTimeout = time.Duration(conf.Signaling.PKRequestTimeoutSecond) * time.Second
 	}
 
-	accountCtl, _ := NewAccountController(conf.Mongo.URI, conf.Mongo.Database, xl)
-	roomCtl, _ := NewRoomController(conf.Mongo.URI, conf.Mongo.Database, xl)
+	accountCtl, err := NewAccountController(conf.Mongo.URI, conf.Mongo.Database, xl)
+	if err != nil {
+		xl.Errorf("failed to create account controller, error %v", err)
+		return nil, err
+	}
+	roomCtl, err := NewRoomController(conf.Mongo.URI, conf.Mongo.Database, xl)
+	if err != nil {
+		xl.Errorf("failed to create room controller, error %v", err)
+		return nil, err
+	}
 	return &SignalingService{
 		xl:               xl,
 		accountCtl:       accountCtl,
@@ -76,7 +84,7 @@ func NewSignalingService(xl *xlog.Logger, conf *config.Config) *SignalingService
 		pkRequestAnswers: make(map[pkRequest]chan bool),
 		pkTimeout:        pkTimeout,
 		rtcConfig:        conf.RTC,
-	}
+	}, nil
 }
 
 // OnMessage 处理[]byte格式的消息。
@@ -820,6 +828,8 @@ func (s *SignalingService) OnUserOffline(xl *xlog.Logger, userID string) error {
 	}
 	xl.Debugf("user %s offline:processing start, current status %v, in room %s", userID, user.Status, user.Room)
 	// 找出用户的房间。
+	if protocol.IsUserBroadCasting(user.Status) {
+	}
 	room, err := s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": userID})
 	if err != nil {
 		xl.Debugf("cannot find user %s's room, user status is %v, error %v", userID, user.Status, err)
@@ -830,9 +840,8 @@ func (s *SignalingService) OnUserOffline(xl *xlog.Logger, userID string) error {
 
 	// 如果是PK状态，向其PK对方发送消息。
 	if user.Status == protocol.UserStatusPKLive {
-		xl.Debugf("user %s is in PK, try to notify PK anchor", userID)
 		if room != nil {
-			xl.Debugf("user %s's room %s is in PK, try to notify PK anchor %s", userID, room.ID, room.PKAnchor)
+			xl.Debugf("user %s's room %s is in PK, notify PK anchor %s", userID, room.ID, room.PKAnchor)
 			pkAnchorID := room.PKAnchor
 			endMessage := &protocol.PKEndNotify{
 				PKRoomID: room.ID,

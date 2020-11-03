@@ -305,39 +305,47 @@ func (s *WSServer) AddPlayer(id string, c *WSClient) error {
 
 // RemovePlayer remove player from player list
 func (s *WSServer) RemovePlayer(id string) error {
-	s.cl.Lock()
-	defer s.cl.Unlock()
 
-	c, ok := s.conns[id]
+	c, ok := s.getPlayerClient(id)
 	if !ok {
 		s.xl.Errorf("user %s not online", id)
 		return errors.NewWSError("player not online")
 	}
-	c.xl.Infof("player %s at %s:%s will be removed", id, c.remoteAddr, c.remotePort)
 	err := s.signaling.OnUserOffline(c.xl, id)
 	if err != nil {
 		c.xl.Errorf("failed to process user %s offline at %s:%s", id, c.remoteAddr, c.remotePort)
 	}
-	delete(s.conns, id)
-	c.xl.Debugf("player %s at %s:%s deleted from connections", id, c.remoteAddr, c.remotePort)
+	s.deletePlayerClient(id)
+	c.xl.Debugf("player %s at %s:%s deleted", id, c.remoteAddr, c.remotePort)
 	return nil
+}
+
+func (s *WSServer) getPlayerClient(id string) (c *WSClient, ok bool) {
+	s.cl.RLock()
+	defer s.cl.RUnlock()
+
+	c, ok = s.conns[id]
+	return c, ok
+}
+
+func (s *WSServer) deletePlayerClient(id string) {
+	s.cl.Lock()
+	defer s.cl.Unlock()
+	delete(s.conns, id)
 }
 
 // NotifyPlayer send player notify message
 func (s *WSServer) NotifyPlayer(id string, t string, v PMessage) error {
-	s.cl.RLock()
-	defer s.cl.RUnlock()
 
 	return s.notifyPlayer(id, t, v)
 }
 
 func (s *WSServer) notifyPlayer(id string, t string, v PMessage) error {
-	playerConn, ok := s.conns[id]
+	playerConn, ok := s.getPlayerClient(id)
 	if !ok || !playerConn.IsOnline() {
 		s.xl.Debugf("player %s not found or not online", id)
 		return errors.NewWSError("player not online")
 	}
-	s.xl.Debugf("notify player %s at connection %s:%s", id, playerConn.remoteAddr, playerConn.remotePort)
 	playerConn.Notify(t, v)
 
 	return nil
@@ -345,10 +353,8 @@ func (s *WSServer) notifyPlayer(id string, t string, v PMessage) error {
 
 // FindPlayer find player by ID
 func (s *WSServer) FindPlayer(id string) (c *WSClient, err error) {
-	s.cl.RLock()
-	defer s.cl.RUnlock()
 
-	player, ok := s.conns[id]
+	player, ok := s.getPlayerClient(id)
 	if !ok || !player.IsOnline() {
 		return nil, errors.NewWSError("player not online")
 	}
