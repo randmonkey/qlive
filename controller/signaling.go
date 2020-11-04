@@ -823,19 +823,20 @@ func (s *SignalingService) OnUserOffline(xl *xlog.Logger, userID string) error {
 	}
 	user, err := s.accountCtl.GetActiveUserByID(xl, userID)
 	if err != nil {
-		xl.Warnf("user %s not logged in but offlined", userID)
+		xl.Debugf("user %s not logged in but offlined", userID)
 		return err
 	}
 	xl.Debugf("user %s offline:processing start, current status %v, in room %s", userID, user.Status, user.Room)
 	// 找出用户的房间。
+	var room *protocol.LiveRoom
 	if protocol.IsUserBroadCasting(user.Status) {
-	}
-	room, err := s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": userID})
-	if err != nil {
-		xl.Debugf("cannot find user %s's room, user status is %v, error %v", userID, user.Status, err)
-	}
-	if room != nil {
-		xl.Debugf("will close room %s created by user %s", room.ID, userID)
+		room, err = s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": userID})
+		if err != nil {
+			xl.Debugf("cannot find user %s's room, user status is %v, error %v", userID, user.Status, err)
+		}
+		if room != nil {
+			xl.Debugf("will close room %s created by user %s", room.ID, userID)
+		}
 	}
 
 	// 如果是PK状态，向其PK对方发送消息。

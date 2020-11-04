@@ -235,7 +235,7 @@ type RongCloudUserOnlineStatus string
 
 const (
 	RongCloudUserOnline  RongCloudUserOnlineStatus = "0"
-	RongClouduserOffline RongCloudUserOnlineStatus = "1"
+	RongCloudUserOffline RongCloudUserOnlineStatus = "1"
 	RongCloudUserLogout  RongCloudUserOnlineStatus = "2"
 )
 
