@@ -15,8 +15,13 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
+	"io/ioutil"
 	"net/http"
+	"sort"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/qiniu/x/xlog"
@@ -108,6 +113,20 @@ func (h *IMHandler) ProcessMessage(c *gin.Context) {
 	}
 }
 
+type rcUserStatusList []*protocol.RongCloudUserStatus
+
+func (l rcUserStatusList) Len() int {
+	return len(l)
+}
+
+func (l rcUserStatusList) Less(i, j int) bool {
+	return l[i].TimestampMS < l[j].TimestampMS
+}
+
+func (l rcUserStatusList) Swap(i, j int) {
+	l[i], l[j] = l[j], l[i]
+}
+
 // OnUserStatusChange 处理用户在线状态改变的回调消息。
 func (h *IMHandler) OnUserStatusChange(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
@@ -116,51 +135,69 @@ func (h *IMHandler) OnUserStatusChange(c *gin.Context) {
 	provider := c.Param("provider")
 	switch provider {
 	case "rongcloud":
-		statusList := map[int]*protocol.RongCloudUserStatus{}
-
-		for i := 0; ; i++ {
-			m := c.PostFormMap(strconv.Itoa(i))
-			if m == nil || len(m) == 0 {
-				break
+		statusList := rcUserStatusList{}
+		bodyBuf, err := ioutil.ReadAll(c.Request.Body)
+		if err != nil {
+			xl.Errorf("failed to read request body")
+		}
+		xl.Debugf("rongcloud user status callback, request body: %s", string(bodyBuf))
+		// refill body
+		c.Request.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBuf))
+		err = json.Unmarshal(bodyBuf, &statusList)
+		if err != nil {
+			xl.Debugf("failed to parse body as JSON, try to parse as form")
+			for i := 0; ; i++ {
+				m := c.PostFormMap(strconv.Itoa(i))
+				if m == nil || len(m) == 0 {
+					break
+				}
+				xl.Debugf("user %d: status map %v", i, m)
+				userID := m["userid"]
+				status := m["status"]
+				userOS := m["os"]
+				clientIP := m["clientIp"]
+				if userID == "" || status == "" || userOS == "" || clientIP == "" {
+					continue
+				}
+				userStatus := &protocol.RongCloudUserStatus{
+					UserID:   userID,
+					Status:   status,
+					OS:       userOS,
+					ClientIP: clientIP,
+				}
+				statusList = append(statusList, userStatus)
 			}
-			userID := m["userid"]
-			status := m["status"]
-			userOS := m["os"]
-			clientIP := m["clientIp"]
-			if userID == "" || status == "" || userOS == "" || clientIP == "" {
-				continue
-			}
-			userStatus := &protocol.RongCloudUserStatus{
-				UserID:   userID,
-				Status:   status,
-				OS:       userOS,
-				ClientIP: clientIP,
-			}
-			statusList[i] = userStatus
 		}
 
 		sign := &protocol.RongCloudSignature{}
-		err := c.ShouldBindQuery(sign)
+		err = c.ShouldBindQuery(sign)
 		if err != nil {
 			xl.Infof("failed to get rongcloud signature, error %v", err)
 			httpErr := errors.NewHTTPErrorBadRequest().WithRequestID(requestID).WithMessage("invalid message signature")
 			c.JSON(http.StatusBadRequest, httpErr)
 			return
 		}
+		sort.Sort(statusList)
+		// userID -> last apperaed status
+		userLastStatus := map[string]*protocol.RongCloudUserStatus{}
 		for _, status := range statusList {
 			userID := status.UserID
+			userLastStatus[userID] = status
+		}
+		for userID, status := range userLastStatus {
+			transferTime := time.Unix(status.TimestampMS/1000, (status.TimestampMS%1000)*1000*1000)
 			switch status.Status {
 			case string(protocol.RongCloudUserOnline):
-				xl.Debugf("user %s rongcloud IM online", userID)
-				h.IMService.UserOnline(xl, userID)
-			case string(protocol.RongClouduserOffline):
-				xl.Debugf("user %s rongcloud IM offline", userID)
-				h.IMService.UserOffline(xl, userID)
+				xl.Debugf("user %s, last status online", userID)
+				h.IMService.UserOnline(xl, userID, transferTime)
+			case string(protocol.RongCloudUserOffline):
+				xl.Debugf("user %s, last status offline", userID)
+				h.IMService.UserOffline(xl, userID, transferTime)
 			case string(protocol.RongCloudUserLogout):
-				xl.Debugf("user %s rongcloud IM logout", userID)
-				h.IMService.UserOffline(xl, userID)
+				xl.Debugf("user %s, last status logout", userID)
+				h.IMService.UserOffline(xl, userID, transferTime)
 			default:
-				xl.Debugf("user %s undefined status %s", userID, status.Status)
+				xl.Debugf("user %s, last status unknown status %s", userID, status.Status)
 			}
 		}
 	default:

@@ -116,8 +116,10 @@ type RongCloudIMConfig struct {
 type IMConfig struct {
 	Provider string `json:"provider"`
 	// SystemUserID 系统用户ID。该用户用于与直播用户通过IM传递控制消息。
-	SystemUserID string             `json:"system_user_id"`
-	RongCloud    *RongCloudIMConfig `json:"rongcloud"`
+	SystemUserID      string             `json:"system_user_id"`
+	PingTickerSecond  int                `json:"ping_ticker_s"`
+	PongTimeoutSecond int                `json:"pong_timeout_s"`
+	RongCloud         *RongCloudIMConfig `json:"rongcloud"`
 }
 
 // PrometheusConfig prometheus 监控服务配置。

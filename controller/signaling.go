@@ -56,7 +56,7 @@ const (
 )
 
 // NewSignalingService 创建新的控制信息服务。
-func NewSignalingService(xl *xlog.Logger, conf *config.Config, accountCtl *AccountController, roomCtl *RoomController) *SignalingService {
+func NewSignalingService(xl *xlog.Logger, conf *config.Config) (*SignalingService, error) {
 	if xl == nil {
 		xl = xlog.New("qlive-signaling-service")
 	}
@@ -67,6 +67,16 @@ func NewSignalingService(xl *xlog.Logger, conf *config.Config, accountCtl *Accou
 		pkTimeout = time.Duration(conf.Signaling.PKRequestTimeoutSecond) * time.Second
 	}
 
+	accountCtl, err := NewAccountController(conf.Mongo.URI, conf.Mongo.Database, xl)
+	if err != nil {
+		xl.Errorf("failed to create account controller, error %v", err)
+		return nil, err
+	}
+	roomCtl, err := NewRoomController(conf.Mongo.URI, conf.Mongo.Database, xl)
+	if err != nil {
+		xl.Errorf("failed to create room controller, error %v", err)
+		return nil, err
+	}
 	return &SignalingService{
 		xl:               xl,
 		accountCtl:       accountCtl,
@@ -74,7 +84,7 @@ func NewSignalingService(xl *xlog.Logger, conf *config.Config, accountCtl *Accou
 		pkRequestAnswers: make(map[pkRequest]chan bool),
 		pkTimeout:        pkTimeout,
 		rtcConfig:        conf.RTC,
-	}
+	}, nil
 }
 
 // OnMessage 处理[]byte格式的消息。
@@ -101,6 +111,8 @@ func (s *SignalingService) OnMessage(xl *xlog.Logger, senderID string, msg []byt
 		return s.OnAnswerPK(xl, senderID, msgBody)
 	case protocol.MT_EndPKRequest:
 		return s.OnEndPK(xl, senderID, msgBody)
+	case protocol.MT_DisconnectNotify:
+		return s.OnUserOffline(xl, senderID)
 	}
 	return nil
 }
@@ -805,23 +817,32 @@ func (s *SignalingService) OnEndPK(xl *xlog.Logger, senderID string, msgBody []b
 }
 
 // OnUserOffline 处理客户端下线。
-func (s *SignalingService) OnUserOffline(xl *xlog.Logger, userID string) {
+func (s *SignalingService) OnUserOffline(xl *xlog.Logger, userID string) error {
+	if xl == nil {
+		xl = s.xl
+	}
 	user, err := s.accountCtl.GetActiveUserByID(xl, userID)
 	if err != nil {
-		xl.Warnf("user %s not logged in but offlined", userID)
-		return
+		xl.Debugf("user %s not logged in but offlined", userID)
+		return err
 	}
-	// 如果用户直播中，找出用户的房间。
+	xl.Debugf("user %s offline:processing start, current status %v, in room %s", userID, user.Status, user.Room)
+	// 找出用户的房间。
 	var room *protocol.LiveRoom
 	if protocol.IsUserBroadCasting(user.Status) {
 		room, err = s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": userID})
 		if err != nil {
-			xl.Warnf("cannot find user %s's room but status is PK live", userID)
+			xl.Debugf("cannot find user %s's room, user status is %v, error %v", userID, user.Status, err)
+		}
+		if room != nil {
+			xl.Debugf("will close room %s created by user %s", room.ID, userID)
 		}
 	}
+
 	// 如果是PK状态，向其PK对方发送消息。
 	if user.Status == protocol.UserStatusPKLive {
 		if room != nil {
+			xl.Debugf("user %s's room %s is in PK, notify PK anchor %s", userID, room.ID, room.PKAnchor)
 			pkAnchorID := room.PKAnchor
 			endMessage := &protocol.PKEndNotify{
 				PKRoomID: room.ID,
@@ -841,17 +862,16 @@ func (s *SignalingService) OnUserOffline(xl *xlog.Logger, userID string) {
 				}
 			}
 		}
-		// 修改该用户状态为空闲。
-		user.Status = protocol.UserStatusIdle
-		s.accountCtl.UpdateActiveUser(s.xl, userID, user)
 	}
 	// 关闭该房间。
 	if room != nil {
-		err := s.roomCtl.CloseRoom(s.xl, userID, room.ID)
+		err := s.roomCtl.CloseRoom(xl, userID, room.ID)
 		if err != nil {
-			s.xl.Errorf("close room %s created by %s failed, error %v", room.ID, userID, err)
-		} else {
-			s.xl.Infof("room %s created by %s has been closed", room.ID, userID)
+			xl.Errorf("close room %s created by %s failed, error %v", room.ID, userID, err)
+			return err
 		}
+		xl.Infof("room %s created by %s has been closed", room.ID, userID)
 	}
+	xl.Debugf("user %s offline:processing end", userID)
+	return nil
 }

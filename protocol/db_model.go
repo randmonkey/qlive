@@ -74,6 +74,7 @@ type IMUser struct {
 	Token            string    `json:"token"`
 	LastRegisterTime time.Time `json:"lastRegisterTime"`
 	LastOnlineTime   time.Time `json:"lastOnlineTime"`
+	LastOfflineTime  time.Time `json:"lastOfflineTime"`
 }
 
 // ActiveUser 已登录用户的信息。
