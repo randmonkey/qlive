@@ -146,9 +146,7 @@ func (c *RongCloudIMController) GetUserToken(xl *xlog.Logger, userID string) (*p
 		LastRegisterTime: now,
 		LastOnlineTime:   now,
 	}
-	c.userLock.Lock()
-	c.userMap[userID] = imUser
-	c.userLock.Unlock()
+	c.setIMUser(imUser)
 	return imUser, nil
 }
 
@@ -255,15 +253,36 @@ func (c *RongCloudIMController) getIMUser(userID string) (user *protocol.IMUser,
 	return user, ok
 }
 
+func (c *RongCloudIMController) setIMUser(user *protocol.IMUser) {
+	if user == nil || user.UserID == "" {
+		return
+	}
+
+	c.userLock.Lock()
+	defer c.userLock.Unlock()
+	c.userMap[user.UserID] = user
+}
+
 func (c *RongCloudIMController) setUserOnlineTime(xl *xlog.Logger, userID string, t time.Time) {
 	if xl == nil {
 		xl = c.xl
 	}
 
 	user, ok := c.getIMUser(userID)
-	if ok && (user.LastOnlineTime.IsZero() || user.LastOnlineTime.Before(t)) {
-		xl.Debugf("user %s, last online time %v", userID, t)
-		user.LastOnlineTime = t
+
+	if ok {
+		if user.LastOnlineTime.IsZero() || user.LastOnlineTime.Before(t) {
+			xl.Debugf("user %s, last online time %v", userID, t)
+			user.LastOnlineTime = t
+		}
+	} else {
+		user = &protocol.IMUser{
+			UserID:           userID,
+			LastRegisterTime: t,
+			LastOnlineTime:   t,
+		}
+		xl.Debugf("add user %s on time %v", userID, t)
+		c.setIMUser(user)
 	}
 }
 
