@@ -120,6 +120,8 @@ type LiveRoom struct {
 	CoverURL string `json:"coverURL" bson:"coverURL"`
 	// Creator 直播间创建者的ID。
 	Creator string `json:"creator" bson:"creator"`
+	// publishURL 合流转推/单路转推的推流的目标地址。
+	PublishURL string `json:"publishURL" bson:"publishURL"`
 	// playURL 观看直播的拉流地址。
 	PlayURL string `json:"playURL" bson:"playURL"`
 	// RTCRoom 对应的RTC房间名。
