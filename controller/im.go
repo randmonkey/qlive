@@ -52,6 +52,7 @@ type RongCloudIMController struct {
 	signalingService *SignalingService
 	rongCloudClient  *rcsdk.RongCloud
 	xl               *xlog.Logger
+	stopCh           chan struct{}
 }
 
 // 融云的IM消息类型。
@@ -100,6 +101,7 @@ func NewRongCloudIMController(conf *config.IMConfig, xl *xlog.Logger) (*RongClou
 		userMap:         map[string]*protocol.IMUser{},
 		rongCloudClient: rcsdk.NewRongCloud(appKey, appSecret),
 		xl:              xl,
+		stopCh:          make(chan struct{}),
 	}
 	if conf.PingTickerSecond == 0 {
 		c.pingPeriod = DefaultPingPeriod
@@ -119,6 +121,11 @@ func NewRongCloudIMController(conf *config.IMConfig, xl *xlog.Logger) (*RongClou
 		return nil, err
 	}
 	return c, nil
+}
+
+// Stop 停止循环运行的goroutine的运行。
+func (c *RongCloudIMController) Stop() {
+	c.stopCh <- struct{}{}
 }
 
 // GetUserToken 用户注册，生成User token
@@ -192,19 +199,22 @@ func (c *RongCloudIMController) WithSignalingService(s *SignalingService) IMInte
 	if s != nil {
 		c.signalingService = s
 		s.Notify = c.sendSignalingMessage
-		go c.pingUserLoop()
+		go c.pingUserLoop(c.stopCh)
 		return c
 	}
 	return c
 }
 
-func (c *RongCloudIMController) pingUserLoop() {
+func (c *RongCloudIMController) pingUserLoop(stopCh chan struct{}) {
 	t := time.NewTicker(c.pingPeriod)
 	for {
 		select {
 		case <-t.C:
 			c.pingUsers()
 			c.removeInactiveUsers()
+		case <-stopCh:
+			c.xl.Infof("ping user loop stopped.")
+			return
 		}
 	}
 }
