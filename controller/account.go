@@ -223,6 +223,13 @@ func (c *AccountController) AccountLogin(xl *xlog.Logger, userID string) (user *
 		xl.Errorf("failed to update or insert user login record, error %v", err)
 		return nil, err
 	}
+	// 更新最后登录时间。
+	account.LastLoginTime = time.Now()
+	err = c.accountColl.UpdateOne(context.Background(), bson.M{"_id": userID}, bson.M{"$set": bson.M{"lastLoginTime": time.Now()}})
+	if err != nil {
+		// 更新登录时间失败不影响正常返回。
+		xl.Errorf("failed to update user %s login time, error %v", userID, err)
+	}
 	return activeUser, nil
 }
 

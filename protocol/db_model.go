@@ -58,15 +58,23 @@ const (
 	UserStatusSingleLive UserStatus = "singleLive"
 	// UserStatusPKLive 用户正在PK连麦直播。
 	UserStatusPKLive UserStatus = "pkLive"
-	// UserStatusPKPending 用户已发起PK请求,正在等待响应
+	// UserStatusPKWait 用户已发起PK请求,正在等待响应
 	UserStatusPKWait UserStatus = "pkWait"
 )
 
+// IsUserBroadCasting 用户状态是否属于直播中。
+func IsUserBroadCasting(status UserStatus) bool {
+	return status == UserStatusSingleLive || status == UserStatusPKLive || status == UserStatusPKWait
+}
+
 // IMUser 对应IM 用户信息。
 type IMUser struct {
-	UserID   string `json:"id"`
-	Username string `json:"name"`
-	Token    string `json:"token"`
+	UserID           string    `json:"id"`
+	Username         string    `json:"name"`
+	Token            string    `json:"token"`
+	LastRegisterTime time.Time `json:"lastRegisterTime"`
+	LastOnlineTime   time.Time `json:"lastOnlineTime"`
+	LastOfflineTime  time.Time `json:"lastOfflineTime"`
 }
 
 // ActiveUser 已登录用户的信息。
@@ -112,6 +120,8 @@ type LiveRoom struct {
 	CoverURL string `json:"coverURL" bson:"coverURL"`
 	// Creator 直播间创建者的ID。
 	Creator string `json:"creator" bson:"creator"`
+	// publishURL 合流转推/单路转推的推流的目标地址。
+	PublishURL string `json:"publishURL" bson:"publishURL"`
 	// playURL 观看直播的拉流地址。
 	PlayURL string `json:"playURL" bson:"playURL"`
 	// RTCRoom 对应的RTC房间名。

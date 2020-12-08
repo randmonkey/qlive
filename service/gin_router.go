@@ -106,6 +106,13 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 	imHandler := &handler.IMHandler{
 		IMService: imController,
 	}
+	if conf.Signaling.Type == "im" {
+		signalingService, err := controller.NewSignalingService(nil, conf)
+		if err != nil {
+			return nil, err
+		}
+		imHandler.IMService = imHandler.IMService.WithSignalingService(signalingService)
+	}
 
 	uploadController, err := controller.NewQiniuUploadController(conf.Storage, nil)
 	if err != nil {
@@ -165,6 +172,8 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 		// IM API：生成IM token。
 		v1.POST("im_user_token", authHandler.Authenticate, imHandler.GetUserToken, handler.SetMetrics)
 		v1.POST("im_user_token/", authHandler.Authenticate, imHandler.GetUserToken, handler.SetMetrics)
+		v1.POST("im_messages/:provider", imHandler.ProcessMessage)
+		v1.POST("im_user_status/:provider", imHandler.OnUserStatusChange)
 		// 上传API：生成上传文件token。
 		v1.POST("upload/token", authHandler.Authenticate, uploadHandler.GetUploadToken, handler.SetMetrics)
 		v1.POST("upload/token/", authHandler.Authenticate, uploadHandler.GetUploadToken, handler.SetMetrics)

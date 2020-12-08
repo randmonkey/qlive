@@ -182,6 +182,63 @@ type IMTokenResponse struct {
 	Token  string `json:"token"`
 }
 
+// RongCloudSignature 融云API回调签名。
+type RongCloudSignature struct {
+	Nonce         string `form:"nonce" json:"nonce"`
+	SignTimestamp string `form:"signTimestamp" json:"signTimestamp"`
+	Signature     string `form:"signature" json:"signature"`
+}
+
+// RongCloudMessage 融云消息路由的消息体。
+type RongCloudMessage struct {
+	Signature  RongCloudSignature `form:"-"`
+	FromUserID string             `form:"fromUserId" json:"fromUserID"`
+	ToUserID   string             `form:"toUserId" json:"toUserID"`
+	// ObjectName 消息的类型。
+	ObjectName     string                  `form:"objectName" json:"objectName"`
+	Content        RongCloudMessageContent `form:"content" json:"content"`
+	ChannelType    string                  `form:"channelType" json:"channelType"`
+	MsgTimestampMS int64                   `form:"msgTimestamp" json:"msgTimestamp"`
+	MsgUID         string                  `form:"msgUID" json:"msgUID"`
+	SensitiveType  int                     `form:"sensitiveType" json:"sensitiveType"`
+	Source         string                  `form:"source" json:"source"`
+	GroupUserIDs   string                  `form:"groupUserIds" json:"groupUserIds"`
+}
+
+// RongCloudUserInfo 融云消息中的用户信息。
+type RongCloudUserInfo struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Portrait string `json:"portrait"`
+	Extra    string `json:"extra,omitempty"`
+}
+
+// RongCloudMessageContent 融云消息内容。目前仅支持文字消息。
+type RongCloudMessageContent struct {
+	Content string            `json:"content"`
+	User    RongCloudUserInfo `json:"user"`
+	Extra   string            `json:"extra,omitempty"`
+}
+
+// RongCloudUserStatus 融云的用户状态变化回调的消息体。
+type RongCloudUserStatus struct {
+	Signature   RongCloudSignature `form:"-"`
+	UserID      string             `form:"userid" json:"userid"`
+	Status      string             `form:"status" json:"status"`
+	OS          string             `form:"os" json:"os"`
+	TimestampMS int64              `form:"time" json:"time"`
+	ClientIP    string             `form:"clientIp" json:"clientIp"`
+}
+
+// RongCloudUserOnlineStatus 融云用户状态变化回调中指定的用户的在线状态，分为 0 在线、1 离线、2 登出。
+type RongCloudUserOnlineStatus string
+
+const (
+	RongCloudUserOnline  RongCloudUserOnlineStatus = "0"
+	RongCloudUserOffline RongCloudUserOnlineStatus = "1"
+	RongCloudUserLogout  RongCloudUserOnlineStatus = "2"
+)
+
 // GetUploadTokenArgs 获取上传文件token的参数。
 type GetUploadTokenArgs struct {
 	Filename      string `json:"filename"`      // 上传资源的文件名（key）

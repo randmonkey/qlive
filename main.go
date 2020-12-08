@@ -65,25 +65,36 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to create gin HTTP server, error %v", err)
 	}
-	go r.Run(conf.ListenAddr)
+	errch := make(chan error, 1)
+	go func() {
+		httpServerErr := r.Run(conf.ListenAddr)
+		errch <- httpServerErr
+	}()
 
 	// 启动 WebSocket server。
-	ws, err := service.NewWSServer(conf)
-	if err != nil {
-		log.Fatalf("failed to create Websocket server, error %v", err)
-	}
-	ws.Start()
-	log.Infof("WebSocket listening and serving on %s%s", conf.WsConf.ListenAddr, conf.WsConf.ServeURI)
+	if conf.Signaling.Type == "ws" || conf.Signaling.Type == "websocket" {
+		ws, err := service.NewWSServer(conf)
+		if err != nil {
+			log.Fatalf("failed to create Websocket server, error %v", err)
+		}
+		ws.Start()
+		log.Infof("WebSocket listening and serving on %s%s", conf.WsConf.ListenAddr, conf.WsConf.ServeURI)
 
+		select {
+
+		case <-ws.StopD():
+			log.Error("WebSocket service stoped: ", ws.Error())
+			errch <- ws.Error()
+		}
+
+		ws.WaitClients()
+	}
 	qC := make(chan os.Signal, 1)
 	signal.Notify(qC, syscall.SIGINT, syscall.SIGTERM)
-
 	select {
 	case s := <-qC:
 		log.Info(s.String())
-	case <-ws.StopD():
-		log.Error("WebSocket service stoped: ", ws.Error())
+	case err = <-errch:
+		log.Error("service stopped, error", err.Error())
 	}
-
-	ws.WaitClients()
 }
