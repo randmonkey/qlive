@@ -91,6 +91,8 @@ type QiniuRTCConfig struct {
 	AppID   string       `json:"app_id"`
 	// 合流转推的域名。
 	PublishHost string `json:"publish_host"`
+	// 播放的域名。
+	PlayHost string `json:"play_host"`
 	// 合流转推的Hub名称。
 	PublishHub string `json:"publish_hub"`
 	// RTC room token的有效时间。

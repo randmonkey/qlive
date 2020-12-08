@@ -269,12 +269,13 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 
 	roomID := h.generateRoomID()
 	room := &protocol.LiveRoom{
-		ID:      roomID,
-		Name:    args.RoomName,
-		Creator: userID,
-		PlayURL: h.generatePlayURL(roomID),
-		RTCRoom: roomID,
-		Status:  protocol.LiveRoomStatusSingle,
+		ID:         roomID,
+		Name:       args.RoomName,
+		Creator:    userID,
+		PublishURL: h.generatePublishURL(roomID),
+		PlayURL:    h.generatePlayURL(roomID),
+		RTCRoom:    roomID,
+		Status:     protocol.LiveRoomStatusSingle,
 	}
 	// 若房间之前不存在，返回创建的房间。若房间已存在，返回已经存在的房间。
 	roomRes, err := h.Room.CreateRoom(xl, room)
@@ -361,6 +362,10 @@ func (h *RoomHandler) generateWSURL(xl *xlog.Logger, host string) string {
 }
 
 func (h *RoomHandler) generatePlayURL(roomID string) string {
+	return "rtmp://" + h.RTCConfig.PlayHost + "/" + h.RTCConfig.PublishHub + "/" + roomID
+}
+
+func (h *RoomHandler) generatePublishURL(roomID string) string {
 	return "rtmp://" + h.RTCConfig.PublishHost + "/" + h.RTCConfig.PublishHub + "/" + roomID
 }
 

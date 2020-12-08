@@ -220,7 +220,7 @@ type RongCloudMessageContent struct {
 	Extra   string            `json:"extra,omitempty"`
 }
 
-// RongCloudUserStatusResp 融云的用户状态变化回调的消息体。
+// RongCloudUserStatus 融云的用户状态变化回调的消息体。
 type RongCloudUserStatus struct {
 	Signature   RongCloudSignature `form:"-"`
 	UserID      string             `form:"userid" json:"userid"`
@@ -230,7 +230,7 @@ type RongCloudUserStatus struct {
 	ClientIP    string             `form:"clientIp" json:"clientIp"`
 }
 
-// RongCloudUserStatus 融云用户状态变化回调中指定的用户的在线状态，分为 0 在线、1 离线、2 登出。
+// RongCloudUserOnlineStatus 融云用户状态变化回调中指定的用户的在线状态，分为 0 在线、1 离线、2 登出。
 type RongCloudUserOnlineStatus string
 
 const (
