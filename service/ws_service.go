@@ -238,7 +238,6 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 
 func (c *WSClient) onEndPK(ctx context.Context, m msgpump.Message) {
 	c.s.signaling.OnEndPK(c.xl, c.playerID, m)
-	return
 }
 
 func (c *WSClient) onDisconnect(ctx context.Context, m msgpump.Message) {
