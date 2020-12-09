@@ -124,6 +124,11 @@ func (c *RoomController) CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) (*
 		xl.Infof("user %s is watching in other room %s, cannot create room", creatorID, activeUser.Room)
 		return nil, &errors.ServerError{Code: errors.ServerErrorUserWatching}
 	}
+	// 查看该用户是否在连麦或者等待连麦。
+	if activeUser.Status == protocol.UserStatusJoined || activeUser.Status == protocol.UserStatusJoinWait {
+		xl.Infof("user %s joined into room %s, cannot create room", creatorID, activeUser.Room)
+		return nil, &errors.ServerError{Code: errors.ServerErrorUserJoined}
+	}
 	// 在mongo创建新的条目，记录直播间信息。
 	_, err = c.roomColl.InsertOne(context.Background(), room)
 	if err != nil {
@@ -286,6 +291,16 @@ func (c *RoomController) EnterRoom(xl *xlog.Logger, userID string, roomID string
 	if activeUser.Status == protocol.UserStatusSingleLive || activeUser.Status == protocol.UserStatusPKLive || activeUser.Status == protocol.UserStatusPKWait {
 		xl.Infof("user %s is live broadcasting in room %s, cannot enter room as audience", activeUser.ID, activeUser.Room)
 		return nil, &errors.ServerError{Code: errors.ServerErrorUserBroadcasting}
+	}
+
+	// 若用户状态为连麦中或已经发出连麦请求，不能进入其他房间观看直播。
+	if activeUser.Status == protocol.UserStatusJoined || activeUser.Status == protocol.UserStatusJoinWait {
+		if activeUser.Room == roomID {
+			return room, nil
+		}
+
+		xl.Infof("user %s is joined into room %s, cannot enter another room %s", userID, activeUser.Room, roomID)
+		return nil, &errors.ServerError{Code: errors.ServerErrorUserJoined}
 	}
 
 	activeUser.Status = protocol.UserStatusWatching

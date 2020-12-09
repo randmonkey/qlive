@@ -36,9 +36,10 @@ const (
 
 // UserInfo 用户的信息，包括ID、昵称等。
 type UserInfo struct {
-	ID       string `json:"id"`
-	Nickname string `json:"nickname"`
-	Gender   string `json:"gender"`
+	ID        string `json:"id"`
+	Nickname  string `json:"nickname"`
+	Gender    string `json:"gender"`
+	AvatarURL string `json:"avatar"`
 }
 
 // SMSLoginArgs 通过短信登录的参数
@@ -68,6 +69,8 @@ type UpdateProfileResponse UserInfo
 type GetRoomResponse struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// 房间的类型。
+	Type string `json:"type"`
 	// 创建者的用户ID
 	Creator UserInfo `json:"creator"`
 	// TODO：添加创建者的昵称/性别等信息？
@@ -99,19 +102,19 @@ type IMChatRoom struct{}
 type EnterRoomResponse struct {
 	RoomID   string `json:"roomID"`
 	RoomName string `json:"roomName"`
-	// 直播间的拉流观看地址。
+	// 房间类型。
+	RoomType string `json:"roomType"`
+	// 若为主播PK房，返回直播间的拉流观看地址。
 	PlayURL string `json:"playURL"`
+	// 若为语音房，返回加入RTC房间的token。
+	RTCRoomToken string `json:"rtcRoomToken,omitempty"`
 	// 直播间创建者信息。
 	Creator UserInfo `json:"creator"`
 	// TODO：添加创建者的昵称/性别等信息？
 	// Status 房间的状态，单人直播中/PK中
 	Status string `json:"status"`
 	// PKAnchorID 若正在PK，返回PK主播的信息。未在PK时该字段为空。
-	PKAnchorID *UserInfo `json:"pkAnchor,omitempty"`
-	// IMUser IM聊天用户信息。
-	IMUser IMUser `json:"imUser"`
-	// IMGroup IM聊天室信息。
-	IMChatRoom IMChatRoom `json:"imGroup"`
+	PKAnchor *UserInfo `json:"pkAnchor,omitempty"`
 }
 
 // LeaveRoomArgs 离开房间的请求。
@@ -123,6 +126,7 @@ type LeaveRoomArgs struct {
 // CreateRoomArgs 创建直播间的请求参数。
 type CreateRoomArgs struct {
 	UserID   string `json:"userID"`
+	RoomType string `json:"roomType"`
 	RoomName string `json:"roomName"`
 }
 
@@ -136,10 +140,6 @@ type CreateRoomResponse struct {
 	RTCRoomToken string `json:"rtcRoomToken"`
 	// WSURL websocket 信令连接的地址。
 	WSURL string `json:"wsURL"`
-	// IMUser
-	IMUser IMUser `json:"imUser"`
-	// IMGroup
-	IMChatRoom IMChatRoom `json:"imChatRoom"`
 }
 
 // CloseRoomArgs 关闭直播间参数。

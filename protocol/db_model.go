@@ -34,7 +34,7 @@ type Account struct {
 	Nickname string `json:"nickname" bson:"nickname"`
 	// 用户显示性别。
 	Gender string `json:"gender" bson:"gender"`
-	// AvartarURL 头像URL地址，暂时留空（SDK提供头像）
+	// AvartarURL 头像URL地址
 	AvatarURL string `json:"avatarURL,omitempty" bson:"avatarURL,omitempty"`
 	// RegisterIP 用户注册（首次登录）时使用的IP。
 	RegisterIP string `json:"registerIP" bson:"registerIP"`
@@ -52,14 +52,18 @@ type UserStatus string
 const (
 	// UserStatusIdle 用户已登录，未观看或创建直播，为空闲状态。
 	UserStatusIdle UserStatus = "idle"
-	// UserStatusWatching 用户正在观看直播。
+	// UserStatusWatching 用户正在观看直播（PK房：观看中，语音房：观看中，未上麦）。
 	UserStatusWatching UserStatus = "watching"
-	// UserStatusSingleLive 用户正在单人直播中。
+	// UserStatusSingleLive （PK房/语音房）用户正在单人直播中。（TODO：语音房主播是否需要单独定义一种状态？）
 	UserStatusSingleLive UserStatus = "singleLive"
-	// UserStatusPKLive 用户正在PK连麦直播。
+	// UserStatusPKLive （PK房）用户正在PK连麦直播。
 	UserStatusPKLive UserStatus = "pkLive"
-	// UserStatusPKWait 用户已发起PK请求,正在等待响应
+	// UserStatusPKWait （PK房）用户已发起PK请求,正在等待响应
 	UserStatusPKWait UserStatus = "pkWait"
+	// UserStatusJoined （语音房）用户已经上麦
+	UserStatusJoined UserStatus = "joined"
+	// UserStatusJoinWait (语音房) 用户已发出连麦请求，等待主播回应
+	UserStatusJoinWait UserStatus = "joinWait"
 )
 
 // IsUserBroadCasting 用户状态是否属于直播中。
@@ -87,8 +91,6 @@ type ActiveUser struct {
 	Status UserStatus `json:"status" bson:"status"`
 	// Room 所在直播间。PK连麦直播中，发起PK一方主播的所在直播间为其PK对手主播的直播间。
 	Room string `json:"room,omitempty" bson:"room,omitempty"`
-	// IMUser 关联IM用户信息。
-	IMUser IMUser `json:"imUser" bson:"imUser"`
 }
 
 // SMSCodeRecord 已发送的验证码记录。
@@ -98,6 +100,16 @@ type SMSCodeRecord struct {
 	SendTime    time.Time `json:"sendTime" bson:"sendTime"`
 	ExpireAt    time.Time `json:"-" bson:"expireAt"`
 }
+
+// RoomType 直播间类型，分为主播PK房和语音聊天房。
+type RoomType string
+
+const (
+	// RoomTypePK 主播PK房。
+	RoomTypePK RoomType = "pk"
+	// RoomTypeVoice 语音聊天房。
+	RoomTypeVoice RoomType = "voice"
+)
 
 // LiveRoomStatus 直播间状态。
 type LiveRoomStatus string
@@ -109,6 +121,8 @@ const (
 	LiveRoomStatusPK LiveRoomStatus = "PK"
 	// LiveRoomStatusWaitPK 直播间有PK请求，等待响应中
 	LiveRoomStatusWaitPK LiveRoomStatus = "waitPK"
+	// LiveRoomStatusVoiceLive 语音聊天房直播中
+	LiveRoomStatusVoiceLive LiveRoomStatus = "voiceLive"
 )
 
 // LiveRoom 直播间信息。
@@ -116,6 +130,8 @@ type LiveRoom struct {
 	ID string `json:"id" bson:"_id"`
 	// Name 直播间显示的名称。
 	Name string `json:"name" bson:"name"`
+	// Type 直播间的类型。
+	Type RoomType `json:"type" bson:"type"`
 	// CoverURL 直播间的封面地址。
 	CoverURL string `json:"coverURL" bson:"coverURL"`
 	// Creator 直播间创建者的ID。
@@ -130,8 +146,10 @@ type LiveRoom struct {
 	Status LiveRoomStatus `json:"status" bson:"status"`
 	// PKAnchor 正在该直播间参与PK的另一主播的ID。
 	PKAnchor string `json:"pkAnchor,omitempty" bson:"pkAnchor,omitempty"`
-	// IMGroup 该直播间关联聊天群组。
-	IMChatRoom string `json:"imGroup" bson:"imGroup"`
+	// JoinedAudiences (仅语音房)加入连麦的观众列表，位置->观众user id.
+	JoinedAudiences map[int]string `json:"joinedAudiences,omitempty" bson:"joinedAudiences,omitempty"`
+	// MaxJoinAudiences （语音房）最大连麦观众人数。
+	MaxJoinAudiences int `json:"maxJoinAudiences" bson:"maxJoinAudiences"`
 }
 
 // Feedback 反馈信息。

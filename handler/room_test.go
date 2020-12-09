@@ -107,18 +107,21 @@ func TestCreateRoom(t *testing.T) {
 	testCases := []struct {
 		userID             string
 		roomName           string
+		roomType           string
 		maxRooms           int
 		expectedStatusCode int
 	}{
 		{
 			userID:             "user-0",
 			roomName:           "room-0",
+			roomType:           "pk",
 			maxRooms:           10,
 			expectedStatusCode: 200,
 		},
 		{
 			userID:             "user-1",
 			roomName:           "room-1",
+			roomType:           "voice",
 			maxRooms:           10,
 			expectedStatusCode: 200,
 		},
@@ -130,19 +133,29 @@ func TestCreateRoom(t *testing.T) {
 		},
 		{
 			userID:             "user-1",
+			roomName:           "room-2",
+			roomType:           "invalid",
+			maxRooms:           10,
+			expectedStatusCode: 400,
+		},
+		{
+			userID:             "user-1",
 			roomName:           "room-1",
+			roomType:           "pk",
 			maxRooms:           1,
 			expectedStatusCode: 503,
 		},
 		{
 			userID:             "user-0",
 			roomName:           "room-1",
+			roomType:           "pk",
 			maxRooms:           10,
 			expectedStatusCode: 403,
 		},
 		{
 			userID:             "user-1",
 			roomName:           "room-0",
+			roomType:           "pk",
 			maxRooms:           10,
 			expectedStatusCode: 409,
 		},
@@ -176,6 +189,7 @@ func TestCreateRoom(t *testing.T) {
 		createRoomReq := &protocol.CreateRoomArgs{
 			UserID:   testCase.userID,
 			RoomName: testCase.roomName,
+			RoomType: testCase.roomType,
 		}
 		buf, err := json.Marshal(createRoomReq)
 		assert.Nilf(t, err, "failed to build request body for case %d, error %v", i, err)
@@ -194,12 +208,14 @@ func TestListAllRooms(t *testing.T) {
 	room0 := &protocol.LiveRoom{
 		ID:      "room-0",
 		Name:    "room0",
+		Type:    protocol.RoomTypePK,
 		Creator: "user-0",
 		Status:  protocol.LiveRoomStatusSingle,
 	}
 	pkRoom1 := &protocol.LiveRoom{
 		ID:       "pkroom-1",
 		Name:     "pk1",
+		Type:     protocol.RoomTypePK,
 		Creator:  "user-1",
 		Status:   protocol.LiveRoomStatusPK,
 		PKAnchor: "user-2",
@@ -207,6 +223,7 @@ func TestListAllRooms(t *testing.T) {
 	pkRoom2 := &protocol.LiveRoom{
 		ID:       "pkroom-2",
 		Name:     "pk2",
+		Type:     protocol.RoomTypePK,
 		Creator:  "user-2",
 		Status:   protocol.LiveRoomStatusPK,
 		PKAnchor: "user-1",

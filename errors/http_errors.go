@@ -37,6 +37,7 @@ const (
 	HTTPErrorInvalidPhoneNumber   = 400001
 	HTTPErrorInvalidRoomName      = 400004
 	HTTPErrorBadLoginType         = 400005
+	HTTPErrorBadRoomType          = 400007
 	HTTPErrorUnauthorized         = 401000
 	HTTPErrorNotLoggedIn          = 401001
 	HTTPErrorWrongSMSCode         = 401002
@@ -110,6 +111,14 @@ func NewHTTPErrorBadLoginType() *HTTPError {
 	return &HTTPError{
 		Code:    HTTPErrorBadLoginType,
 		Summary: "unsupported login type",
+	}
+}
+
+// NewHTTPErrorBadRoomType 不支持的房间类型。
+func NewHTTPErrorBadRoomType() *HTTPError {
+	return &HTTPError{
+		Code:    HTTPErrorBadRoomType,
+		Summary: "unsupported room type",
 	}
 }
 
