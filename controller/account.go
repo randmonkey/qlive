@@ -115,6 +115,9 @@ func (c *AccountController) UpdateAccount(xl *xlog.Logger, id string, newAccount
 	if newAccount.Gender != "" {
 		account.Gender = newAccount.Gender
 	}
+	if newAccount.AvatarURL != "" {
+		account.AvatarURL = newAccount.AvatarURL
+	}
 	err = c.accountColl.UpdateOne(context.Background(), bson.M{"_id": id}, bson.M{"$set": account})
 	if err != nil {
 		xl.Errorf("failed to update account %s,error %v", id, err)

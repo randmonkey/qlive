@@ -58,8 +58,9 @@ type LoginResponse struct {
 
 // UpdateProfileArgs 修改用户信息接口。
 type UpdateProfileArgs struct {
-	Nickname string `json:"nickname"`
-	Gender   string `json:"gender"`
+	Nickname  string `json:"nickname"`
+	Gender    string `json:"gender"`
+	AvatarURL string `json:"avatar,omitempty"`
 }
 
 // UpdateProfileResponse 修改用户信息的返回结果。

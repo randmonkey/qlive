@@ -216,9 +216,10 @@ func (h *AccountHandler) LoginBySMS(c *gin.Context) {
 
 	res := &protocol.LoginResponse{
 		UserInfo: protocol.UserInfo{
-			ID:       account.ID,
-			Nickname: account.Nickname,
-			Gender:   account.Gender,
+			ID:        account.ID,
+			Nickname:  account.Nickname,
+			Gender:    account.Gender,
+			AvatarURL: account.AvatarURL,
 		},
 		Token:  user.Token,
 		Status: string(user.Status),
@@ -276,6 +277,9 @@ func (h *AccountHandler) UpdateProfile(c *gin.Context) {
 	if args.Gender != "" {
 		account.Gender = args.Gender
 	}
+	if args.AvatarURL != "" {
+		account.AvatarURL = args.AvatarURL
+	}
 
 	newAccount, err := h.Account.UpdateAccount(xl, id, account)
 	if err != nil {
@@ -284,9 +288,10 @@ func (h *AccountHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 	ret := &protocol.UpdateProfileResponse{
-		ID:       newAccount.ID,
-		Nickname: newAccount.Nickname,
-		Gender:   newAccount.Gender,
+		ID:        newAccount.ID,
+		Nickname:  newAccount.Nickname,
+		Gender:    newAccount.Gender,
+		AvatarURL: newAccount.AvatarURL,
 	}
 	c.JSON(http.StatusOK, ret)
 }

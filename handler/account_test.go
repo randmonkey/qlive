@@ -89,6 +89,7 @@ func TestLogin(t *testing.T) {
 					PhoneNumber: "19999990002",
 					ID:          "user-1",
 					Nickname:    "user01",
+					AvatarURL:   "files.example.com/1.jpg",
 				},
 			},
 		},
@@ -101,6 +102,7 @@ func TestLogin(t *testing.T) {
 		smsCode            string
 		expectedStatusCode int
 		userID             string
+		avatarURL          string
 	}{
 		{
 			loginType:          "invalid",
@@ -112,6 +114,7 @@ func TestLogin(t *testing.T) {
 			smsCode:            "123456",
 			expectedStatusCode: 200,
 			userID:             "user-1",
+			avatarURL:          "files.example.com/1.jpg",
 		},
 		{
 			loginType:          "smscode",
@@ -165,12 +168,14 @@ func TestUpdateProfile(t *testing.T) {
 		userID             string
 		nickname           string
 		gender             string
+		avatarURL          string
 		expectedStatusCode int
 	}{
 		{
 			userID:             "user-0",
 			nickname:           "Alice",
 			gender:             "female",
+			avatarURL:          "test.example.com/f.jpg",
 			expectedStatusCode: 200,
 		},
 		{
@@ -187,8 +192,9 @@ func TestUpdateProfile(t *testing.T) {
 		c.Set(protocol.XLogKey, xlog.New(fmt.Sprintf("test-update-profile-%d", i)))
 		c.Set(protocol.UserIDContextKey, testCase.userID)
 		profileReq := &protocol.UpdateProfileArgs{
-			Nickname: testCase.nickname,
-			Gender:   testCase.gender,
+			Nickname:  testCase.nickname,
+			Gender:    testCase.gender,
+			AvatarURL: testCase.avatarURL,
 		}
 
 		buf, err := json.Marshal(profileReq)
