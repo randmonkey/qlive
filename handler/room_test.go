@@ -110,6 +110,7 @@ func TestCreateRoom(t *testing.T) {
 		roomType           string
 		maxRooms           int
 		expectedStatusCode int
+		expectedRoomStatus string
 	}{
 		{
 			userID:             "user-0",
@@ -117,6 +118,15 @@ func TestCreateRoom(t *testing.T) {
 			roomType:           "pk",
 			maxRooms:           10,
 			expectedStatusCode: 200,
+			expectedRoomStatus: "single",
+		},
+		{
+			userID:             "user-1",
+			roomName:           "room-1",
+			roomType:           "pk",
+			maxRooms:           10,
+			expectedStatusCode: 200,
+			expectedRoomStatus: "single",
 		},
 		{
 			userID:             "user-1",
@@ -124,6 +134,7 @@ func TestCreateRoom(t *testing.T) {
 			roomType:           "voice",
 			maxRooms:           10,
 			expectedStatusCode: 200,
+			expectedRoomStatus: "voiceLive",
 		},
 		{
 			userID:             "user-1",
@@ -169,6 +180,7 @@ func TestCreateRoom(t *testing.T) {
 					ID:      "room-0",
 					Name:    "room-0",
 					Creator: "user-0",
+					Status:  protocol.LiveRoomStatusSingle,
 				},
 			},
 			roomAudiences: map[string][]string{},
@@ -183,7 +195,8 @@ func TestCreateRoom(t *testing.T) {
 		// intitialize test recorder and context
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
-		c.Set(protocol.XLogKey, xlog.New(fmt.Sprintf("test-create-room-%d", i)))
+		xl := xlog.New(fmt.Sprintf("test-create-room-%d", i))
+		c.Set(protocol.XLogKey, xl)
 		c.Set(protocol.UserIDContextKey, testCase.userID)
 		// build request
 		createRoomReq := &protocol.CreateRoomArgs{
@@ -200,6 +213,14 @@ func TestCreateRoom(t *testing.T) {
 
 		handler.CreateRoom(c)
 		assert.Equalf(t, testCase.expectedStatusCode, w.Code, "code is not the same as expected for test case %d", i)
+		if testCase.expectedStatusCode == http.StatusOK {
+			roomResp := &protocol.CreateRoomResponse{}
+			err := json.Unmarshal(w.Body.Bytes(), &roomResp)
+			assert.Nilf(t, err, "should parse create result successfully for test case %d", i)
+			room, err := mockRoom.GetRoomByID(xl, roomResp.RoomID)
+			assert.Nilf(t, err, "should get room %s successfully for test case %d", roomResp.RoomID, i)
+			assert.Equalf(t, testCase.expectedRoomStatus, string(room.Status), "room status should be equal for test case %d", i)
+		}
 	}
 }
 

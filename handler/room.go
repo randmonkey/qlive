@@ -290,7 +290,14 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 		PublishURL: h.generatePublishURL(roomID),
 		PlayURL:    h.generatePlayURL(roomID),
 		RTCRoom:    roomID,
-		Status:     protocol.LiveRoomStatusSingle,
+	}
+	switch roomType {
+	case protocol.RoomTypePK:
+		room.Status = protocol.LiveRoomStatusSingle
+	case protocol.RoomTypeVoice:
+		room.Status = protocol.LiveRoomStatusVoiceLive
+	default:
+		room.Status = protocol.LiveRoomStatusSingle
 	}
 	// 若房间之前不存在，返回创建的房间。若房间已存在，返回已经存在的房间。
 	roomRes, err := h.Room.CreateRoom(xl, room)
@@ -312,6 +319,10 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 				return
 			case errors.ServerErrorUserWatching:
 				httpErr := errors.NewHTTPErrorUserWatching().WithRequestID(requestID)
+				c.JSON(http.StatusConflict, httpErr)
+				return
+			case errors.ServerErrorUserJoined:
+				httpErr := errors.NewHTTPErrorUserJoined().WithRequestID(requestID)
 				c.JSON(http.StatusConflict, httpErr)
 				return
 			}
@@ -723,6 +734,11 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 			case errors.ServerErrorUserBroadcasting:
 				xl.Infof("enter room failed: user %s is broadcasting", userID)
 				httpErr := errors.NewHTTPErrorUserBroadcasting().WithRequestID(requestID)
+				c.JSON(http.StatusConflict, httpErr)
+				return
+			case errors.ServerErrorUserJoined:
+				xl.Infof("enter room failed: user %s joined", userID)
+				httpErr := errors.NewHTTPErrorUserJoined().WithRequestID(requestID)
 				c.JSON(http.StatusConflict, httpErr)
 				return
 			}

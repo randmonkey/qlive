@@ -54,8 +54,9 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 	}
 
 	accountHandler := &handler.AccountHandler{
-		Account: accountController,
-		SMSCode: smsCodeController,
+		Account:           accountController,
+		SMSCode:           smsCodeController,
+		DefaultAvatarURLs: conf.DefaultAvatars,
 	}
 
 	authController, err := controller.NewAuthController(conf.Mongo.URI, conf.Mongo.Database, nil)

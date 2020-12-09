@@ -93,13 +93,15 @@ func TestLogin(t *testing.T) {
 				},
 			},
 		},
-		SMSCode: &mockSMSCode{},
+		SMSCode:           &mockSMSCode{},
+		DefaultAvatarURLs: []string{"files.example.com/default.jpg"},
 	}
 
 	testCases := []struct {
 		loginType          string
 		phoneNumber        string
 		smsCode            string
+		newUser            bool
 		expectedStatusCode int
 		userID             string
 		avatarURL          string
@@ -115,6 +117,15 @@ func TestLogin(t *testing.T) {
 			expectedStatusCode: 200,
 			userID:             "user-1",
 			avatarURL:          "files.example.com/1.jpg",
+		},
+		{
+			loginType:          "smscode",
+			phoneNumber:        "19999990004",
+			smsCode:            "123456",
+			newUser:            true,
+			expectedStatusCode: 200,
+			userID:             "user-1",
+			avatarURL:          "files.example.com/default.jpg",
 		},
 		{
 			loginType:          "smscode",
@@ -150,7 +161,10 @@ func TestLogin(t *testing.T) {
 			resp := protocol.LoginResponse{}
 			err = json.Unmarshal(w.Body.Bytes(), &resp)
 			assert.Nilf(t, err, "failed to read response for test case %d, error %v", i, err)
-			assert.Equalf(t, testCase.userID, resp.ID, "user ID is not same for test case %d", i)
+			if !testCase.newUser {
+				assert.Equalf(t, testCase.userID, resp.ID, "user ID is not same for test case %d", i)
+				assert.Equalf(t, testCase.avatarURL, resp.AvatarURL, "user avatar is not same for test case %d", i)
+			}
 		}
 	}
 }
@@ -182,6 +196,7 @@ func TestUpdateProfile(t *testing.T) {
 			userID:             "user-1",
 			nickname:           "Bob",
 			gender:             "male",
+			avatarURL:          "test.example.com/m.jpg",
 			expectedStatusCode: 404,
 		},
 	}
