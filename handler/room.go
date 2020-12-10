@@ -15,6 +15,7 @@
 package handler
 
 import (
+	"fmt"
 	"math/rand"
 	"net"
 	"net/http"
@@ -93,6 +94,58 @@ func (h *RoomHandler) ListRooms(c *gin.Context) {
 	h.ListAllRooms(c)
 }
 
+func (h *RoomHandler) makeGetRoomResponse(xl *xlog.Logger, room *protocol.LiveRoom) (*protocol.GetRoomResponse, error) {
+	if room == nil {
+		return nil, fmt.Errorf("nil room")
+	}
+	creatorInfo, err := h.Account.GetAccountByID(xl, room.Creator)
+	if err != nil {
+		xl.Errorf("failed to get account info for user %s, creator of room %s", room.Creator, room.ID)
+		// TODO：创建者用户信息获取失败，是否要算这个房间? 现在是添加一个模拟的用户信息
+		creatorInfo = &protocol.Account{ID: room.Creator, Nickname: "user-" + room.Creator}
+	}
+	audienceNumber, err := h.Room.GetAudienceNumber(xl, room.ID)
+	if err != nil {
+		xl.Errorf("failed to get audience number of room %s, error %v", room.ID, err)
+	}
+	roomType := room.Type
+	if string(roomType) == "" {
+		// 兼容之前创建的没有type字段的房间。
+		roomType = protocol.RoomTypePK
+	}
+	getRoomResp := protocol.GetRoomResponse{
+		ID:   room.ID,
+		Name: room.Name,
+		Type: string(roomType),
+		Creator: protocol.UserInfo{
+			ID:        room.Creator,
+			Nickname:  creatorInfo.Nickname,
+			Gender:    creatorInfo.Gender,
+			AvatarURL: creatorInfo.AvatarURL,
+		},
+		PlayURL:        room.PlayURL,
+		AudienceNumber: audienceNumber,
+		Status:         string(room.Status),
+	}
+	if room.Status == protocol.LiveRoomStatusPK {
+		pkAnchorInfo, err := h.Account.GetAccountByID(xl, room.PKAnchor)
+		if err == nil {
+			getRoomResp.PKAnchor = &protocol.UserInfo{
+				ID:        room.PKAnchor,
+				Nickname:  pkAnchorInfo.Nickname,
+				Gender:    pkAnchorInfo.Gender,
+				AvatarURL: pkAnchorInfo.AvatarURL,
+			}
+		} else {
+			getRoomResp.PKAnchor = &protocol.UserInfo{
+				ID: room.PKAnchor,
+			}
+		}
+	}
+	// TODO:若为语音房，添加上麦观众信息。
+	return &getRoomResp, nil
+}
+
 // ListCanPKRooms 列出当前主播可以PK的房间列表。
 func (h *RoomHandler) ListCanPKRooms(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
@@ -110,29 +163,21 @@ func (h *RoomHandler) ListCanPKRooms(c *gin.Context) {
 	}
 	resp := &protocol.ListRoomsResponse{}
 	for _, room := range rooms {
-		creatorInfo, err := h.Account.GetAccountByID(xl, room.Creator)
+		// 获取房间类型。
+		roomType := room.Type
+		if string(roomType) == "" {
+			// 兼容之前创建的没有type字段的房间。
+			roomType = protocol.RoomTypePK
+		}
+		if roomType != protocol.RoomTypePK {
+			continue
+		}
+		getRoomResp, err := h.makeGetRoomResponse(xl, &room)
 		if err != nil {
-			xl.Errorf("failed to get account info for user %s, creator of room %s", room.Creator, room.ID)
-			// TODO：创建者用户信息获取失败，是否要算这个房间? 现在是添加一个模拟的用户信息
-			creatorInfo = &protocol.Account{ID: room.Creator, Nickname: "user-" + room.Creator}
+			xl.Errorf("failed to make get room response for room %s", room.ID)
+			continue
 		}
-		audienceNumber, err := h.Room.GetAudienceNumber(xl, room.ID)
-		if err != nil {
-			xl.Errorf("failed to get audience number of room %s, error %v", room.ID, err)
-		}
-		getRoomResp := protocol.GetRoomResponse{
-			ID:   room.ID,
-			Name: room.Name,
-			Creator: protocol.UserInfo{
-				ID:       room.Creator,
-				Nickname: creatorInfo.Nickname,
-				Gender:   creatorInfo.Gender,
-			},
-			PlayURL:        room.PlayURL,
-			AudienceNumber: audienceNumber,
-			Status:         string(room.Status),
-		}
-		resp.Rooms = append(resp.Rooms, getRoomResp)
+		resp.Rooms = append(resp.Rooms, *getRoomResp)
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -154,30 +199,14 @@ func (h *RoomHandler) ListRoomsByCreator(c *gin.Context) {
 		return
 	}
 	resp := &protocol.ListRoomsResponse{}
-	creatorInfo, err := h.Account.GetAccountByID(xl, creatorID)
-	if err != nil {
-		xl.Errorf("failed to get account info of creator %s, error %v", creatorID, err)
-		// TODO：创建者用户信息获取失败，是否要算这个房间? 现在是添加一个模拟的用户信息
-		creatorInfo = &protocol.Account{ID: creatorID, Nickname: "user-" + creatorID}
-	}
 	for _, room := range rooms {
-		audienceNumber, err := h.Room.GetAudienceNumber(xl, room.ID)
+		// 获取房间类型。
+		getRoomResp, err := h.makeGetRoomResponse(xl, &room)
 		if err != nil {
-			xl.Errorf("failed to get audience number of room %s, error %v", room.ID, err)
+			xl.Errorf("failed to make get room response for room %s", room.ID)
+			continue
 		}
-		getRoomResp := protocol.GetRoomResponse{
-			ID:   room.ID,
-			Name: room.Name,
-			Creator: protocol.UserInfo{
-				ID:       room.Creator,
-				Nickname: creatorInfo.Nickname,
-				Gender:   creatorInfo.Gender,
-			},
-			PlayURL:        room.PlayURL,
-			AudienceNumber: audienceNumber,
-			Status:         string(room.Status),
-		}
-		resp.Rooms = append(resp.Rooms, getRoomResp)
+		resp.Rooms = append(resp.Rooms, *getRoomResp)
 	}
 	c.JSON(http.StatusOK, resp)
 
@@ -200,34 +229,12 @@ func (h *RoomHandler) ListAllRooms(c *gin.Context) {
 			// 隐藏自己创建的房间
 			continue
 		}
-		creatorInfo, err := h.Account.GetAccountByID(xl, room.Creator)
+		getRoomResp, err := h.makeGetRoomResponse(xl, &room)
 		if err != nil {
-			xl.Errorf("failed to get account info for user %s, creator of room %s", room.Creator, room.ID)
-			// TODO：创建者用户信息获取失败，是否要算这个房间? 现在是添加一个模拟的用户信息
-			creatorInfo = &protocol.Account{ID: room.Creator, Nickname: "user-" + room.Creator}
+			xl.Errorf("failed to make get room response for room %s", room.ID)
+			continue
 		}
-		audienceNumber, err := h.Room.GetAudienceNumber(xl, room.ID)
-		if err != nil {
-			xl.Errorf("failed to get audience number of room %s, error %v", room.ID, err)
-		}
-		getRoomResp := protocol.GetRoomResponse{
-			ID:   room.ID,
-			Name: room.Name,
-			Creator: protocol.UserInfo{
-				ID:       room.Creator,
-				Nickname: creatorInfo.Nickname,
-				Gender:   creatorInfo.Gender,
-			},
-			PlayURL:        room.PlayURL,
-			AudienceNumber: audienceNumber,
-			Status:         string(room.Status),
-		}
-		if room.Status == protocol.LiveRoomStatusPK {
-			getRoomResp.PKAnchor = &protocol.UserInfo{
-				ID: room.PKAnchor,
-			}
-		}
-		resp.Rooms = append(resp.Rooms, getRoomResp)
+		resp.Rooms = append(resp.Rooms, *getRoomResp)
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -266,16 +273,31 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, httpErr)
 		return
 	}
+	roomType, err := h.convertRoomType(args.RoomType)
+	if err != nil {
+		xl.Infof("invalid room type %s", args.RoomType)
+		httpErr := errors.NewHTTPErrorBadRoomType().WithRequestID(requestID).WithMessagef("unsupported room type: %s", args.RoomType)
+		c.JSON(http.StatusBadRequest, httpErr)
+		return
+	}
 
 	roomID := h.generateRoomID()
 	room := &protocol.LiveRoom{
 		ID:         roomID,
 		Name:       args.RoomName,
+		Type:       roomType,
 		Creator:    userID,
 		PublishURL: h.generatePublishURL(roomID),
 		PlayURL:    h.generatePlayURL(roomID),
 		RTCRoom:    roomID,
-		Status:     protocol.LiveRoomStatusSingle,
+	}
+	switch roomType {
+	case protocol.RoomTypePK:
+		room.Status = protocol.LiveRoomStatusSingle
+	case protocol.RoomTypeVoice:
+		room.Status = protocol.LiveRoomStatusVoiceLive
+	default:
+		room.Status = protocol.LiveRoomStatusSingle
 	}
 	// 若房间之前不存在，返回创建的房间。若房间已存在，返回已经存在的房间。
 	roomRes, err := h.Room.CreateRoom(xl, room)
@@ -297,6 +319,10 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 				return
 			case errors.ServerErrorUserWatching:
 				httpErr := errors.NewHTTPErrorUserWatching().WithRequestID(requestID)
+				c.JSON(http.StatusConflict, httpErr)
+				return
+			case errors.ServerErrorUserJoined:
+				httpErr := errors.NewHTTPErrorUserJoined().WithRequestID(requestID)
 				c.JSON(http.StatusConflict, httpErr)
 				return
 			}
@@ -324,6 +350,17 @@ func (h *RoomHandler) validateRoomName(roomName string) bool {
 		return false
 	}
 	return true
+}
+
+// convertRoomType 校验并转换房间类型。
+func (h *RoomHandler) convertRoomType(roomType string) (protocol.RoomType, error) {
+	switch roomType {
+	case string(protocol.RoomTypePK):
+		return protocol.RoomTypePK, nil
+	case string(protocol.RoomTypeVoice):
+		return protocol.RoomTypeVoice, nil
+	}
+	return protocol.RoomType(""), fmt.Errorf("unsupported room type %s", roomType)
 }
 
 // generateRoomID 生成直播间ID。
@@ -429,29 +466,14 @@ func (h *RoomHandler) GetRoom(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, httpErr)
 		return
 	}
-	creator, err := h.Account.GetAccountByID(xl, room.Creator)
+	resp, err := h.makeGetRoomResponse(xl, room)
 	if err != nil {
-		// 获取主播账号信息失败，这里暂时用模拟的的账号信息填充。
-		xl.Errorf("failed to get user info of %s, creator of room %s", room.Creator, room.ID)
-		creator = &protocol.Account{ID: room.Creator, Nickname: "user-" + room.Creator}
+		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID).WithMessagef("failed to get room info")
+		xl.Errorf("failed to get make get room response, error %v", err)
+		c.JSON(http.StatusInternalServerError, httpErr)
+		return
 	}
-	audienceNumber, err := h.Room.GetAudienceNumber(xl, roomID)
-	if err != nil {
-		xl.Errorf("failed to get audience number of room %s,error %v", roomID, err)
-	}
-	resp := &protocol.GetRoomResponse{
-		ID:             room.ID,
-		Name:           room.Name,
-		PlayURL:        room.PlayURL,
-		AudienceNumber: audienceNumber,
-		Status:         string(room.Status),
-		Creator: protocol.UserInfo{
-			ID:       creator.ID,
-			Nickname: creator.Nickname,
-			Gender:   creator.Gender,
-		},
-	}
-	xl.Infof("user %s get room info of room %s", userID, roomID)
+	xl.Debugf("user %s get room info of room %s", userID, roomID)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -714,6 +736,11 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 				httpErr := errors.NewHTTPErrorUserBroadcasting().WithRequestID(requestID)
 				c.JSON(http.StatusConflict, httpErr)
 				return
+			case errors.ServerErrorUserJoined:
+				xl.Infof("enter room failed: user %s joined", userID)
+				httpErr := errors.NewHTTPErrorUserJoined().WithRequestID(requestID)
+				c.JSON(http.StatusConflict, httpErr)
+				return
 			}
 		}
 		xl.Errorf("enter room failed, enter room request: %v, error: %v", args, err)
@@ -737,9 +764,18 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 		Gender:   creator.Gender,
 	}
 
+	ret = &protocol.EnterRoomResponse{
+		RoomID:   updatedRoom.ID,
+		RoomName: updatedRoom.Name,
+		RoomType: string(updatedRoom.Type),
+		PlayURL:  updatedRoom.PlayURL,
+		Creator:  creatorInfo,
+		Status:   string(updatedRoom.Status),
+	}
+
 	// 获取pkAnchor的userInfo
-	pkAnchorInfo := &protocol.UserInfo{}
 	if updatedRoom.Status == protocol.LiveRoomStatusPK {
+		pkAnchorInfo := &protocol.UserInfo{}
 		pkAnchor, err := h.Account.GetAccountByID(xl, updatedRoom.PKAnchor)
 		if err != nil {
 			xl.Errorf("pkAnchor %v is not found", pkAnchor)
@@ -752,17 +788,12 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 			Nickname: pkAnchor.Nickname,
 			Gender:   pkAnchor.Gender,
 		}
+		ret.PKAnchor = pkAnchorInfo
 	}
-
-	ret = &protocol.EnterRoomResponse{
-		RoomID:     updatedRoom.ID,
-		RoomName:   updatedRoom.Name,
-		PlayURL:    updatedRoom.PlayURL,
-		Creator:    creatorInfo,
-		Status:     string(updatedRoom.Status),
-		PKAnchorID: pkAnchorInfo,
-		IMUser:     protocol.IMUser{},
-		IMChatRoom: protocol.IMChatRoom{},
+	// 若为语音房，为用户生成一个具有user权限的RTC房间token。
+	if updatedRoom.Type == protocol.RoomTypeVoice {
+		rtcRoomToken := h.generateRTCRoomToken(updatedRoom.ID, userID, "user")
+		ret.RTCRoomToken = rtcRoomToken
 	}
 
 	c.JSON(http.StatusOK, ret)

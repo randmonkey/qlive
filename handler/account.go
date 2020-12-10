@@ -44,8 +44,9 @@ type SMSCodeInterface interface {
 
 // AccountHandler 处理与账号相关的请求：登录、注册、退出、修改账号信息等
 type AccountHandler struct {
-	Account AccountInterface
-	SMSCode SMSCodeInterface
+	Account           AccountInterface
+	SMSCode           SMSCodeInterface
+	DefaultAvatarURLs []string
 }
 
 // validatePhoneNumber 检查手机号码是否符合规则。
@@ -154,6 +155,14 @@ func (h *AccountHandler) generateNicknameByPhoneNumber(phoneNumber string) strin
 	return namePrefix + phoneNumber[len(phoneNumber)-4:]
 }
 
+func (h *AccountHandler) generateInitialAvatar() string {
+	if len(h.DefaultAvatarURLs) == 0 {
+		return ""
+	}
+	index := rand.Intn(len(h.DefaultAvatarURLs))
+	return h.DefaultAvatarURLs[index]
+}
+
 // LoginBySMS 使用手机短信验证码登录。
 func (h *AccountHandler) LoginBySMS(c *gin.Context) {
 	xl := c.MustGet(protocol.XLogKey).(*xlog.Logger)
@@ -182,6 +191,7 @@ func (h *AccountHandler) LoginBySMS(c *gin.Context) {
 				ID:          h.generateUserID(),
 				Nickname:    h.generateNicknameByPhoneNumber(args.PhoneNumber),
 				PhoneNumber: args.PhoneNumber,
+				AvatarURL:   h.generateInitialAvatar(),
 			}
 			createErr := h.Account.CreateAccount(xl, newAccount)
 			if createErr != nil {
@@ -216,9 +226,10 @@ func (h *AccountHandler) LoginBySMS(c *gin.Context) {
 
 	res := &protocol.LoginResponse{
 		UserInfo: protocol.UserInfo{
-			ID:       account.ID,
-			Nickname: account.Nickname,
-			Gender:   account.Gender,
+			ID:        account.ID,
+			Nickname:  account.Nickname,
+			Gender:    account.Gender,
+			AvatarURL: account.AvatarURL,
 		},
 		Token:  user.Token,
 		Status: string(user.Status),
@@ -276,6 +287,9 @@ func (h *AccountHandler) UpdateProfile(c *gin.Context) {
 	if args.Gender != "" {
 		account.Gender = args.Gender
 	}
+	if args.AvatarURL != "" {
+		account.AvatarURL = args.AvatarURL
+	}
 
 	newAccount, err := h.Account.UpdateAccount(xl, id, account)
 	if err != nil {
@@ -284,9 +298,10 @@ func (h *AccountHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 	ret := &protocol.UpdateProfileResponse{
-		ID:       newAccount.ID,
-		Nickname: newAccount.Nickname,
-		Gender:   newAccount.Gender,
+		ID:        newAccount.ID,
+		Nickname:  newAccount.Nickname,
+		Gender:    newAccount.Gender,
+		AvatarURL: newAccount.AvatarURL,
 	}
 	c.JSON(http.StatusOK, ret)
 }

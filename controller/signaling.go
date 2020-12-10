@@ -146,6 +146,19 @@ func (s *SignalingService) OnStartPK(xl *xlog.Logger, senderID string, msgBody [
 		s.Notify(xl, senderID, protocol.MT_StartResponse, res)
 		return err
 	}
+	// 检查房间是否为主播PK房。
+	if pkRoom.Type != protocol.RoomTypePK {
+		// 兼容没有指定type的旧房间
+		if string(pkRoom.Type) != "" {
+			res := &protocol.StartPKResponse{
+				RPCID: req.RPCID,
+				Code:  errors.WSErrorRoomTypeWrong,
+				Error: errors.WSErrorToString[errors.WSErrorRoomTypeWrong],
+			}
+			s.Notify(xl, senderID, protocol.MT_StartResponse, res)
+			return fmt.Errorf("invalid room type %s", pkRoom.Type)
+		}
+	}
 	if pkRoom.Status != protocol.LiveRoomStatusSingle {
 		res := &protocol.StartPKResponse{
 			RPCID: req.RPCID,

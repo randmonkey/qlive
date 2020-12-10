@@ -22,6 +22,7 @@ const (
 	WSErrorRoomNoExist      = 10011
 	WSErrorRoomInPK         = 10012
 	WSErrorRoomNotInPK      = 10013
+	WSErrorRoomTypeWrong    = 10014 // 房间类型不符合，不能发起PK/连麦请求
 	WSErrorPlayerNoExist    = 10021
 	WSErrorPlayerOffline    = 10022
 	WSErrorInvalidParameter = 10031
@@ -35,6 +36,7 @@ var WSErrorToString = map[int]string{
 	WSErrorRoomNoExist:      "room no exist",
 	WSErrorRoomInPK:         "room in PK",
 	WSErrorRoomNotInPK:      "room not in PK",
+	WSErrorRoomTypeWrong:    "room type does not support the request",
 	WSErrorPlayerNoExist:    "player no exist",
 	WSErrorPlayerOffline:    "player offline",
 	WSErrorInvalidParameter: "invalid parameter",

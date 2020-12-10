@@ -37,6 +37,7 @@ const (
 	HTTPErrorInvalidPhoneNumber   = 400001
 	HTTPErrorInvalidRoomName      = 400004
 	HTTPErrorBadLoginType         = 400005
+	HTTPErrorBadRoomType          = 400007
 	HTTPErrorUnauthorized         = 401000
 	HTTPErrorNotLoggedIn          = 401001
 	HTTPErrorWrongSMSCode         = 401002
@@ -49,6 +50,7 @@ const (
 	HTTPErrorRoomNameUsed         = 409002
 	HTTPErrorUserBroadcating      = 409003
 	HTTPErrorUserWatching         = 409004
+	HTTPErrorUserJoined           = 409005
 	HTTPErrorSMSSendTooFrequent   = 429001
 	HTTPErrorTooManyRooms         = 503001
 	HTTPErrorInternal             = 500000
@@ -110,6 +112,14 @@ func NewHTTPErrorBadLoginType() *HTTPError {
 	return &HTTPError{
 		Code:    HTTPErrorBadLoginType,
 		Summary: "unsupported login type",
+	}
+}
+
+// NewHTTPErrorBadRoomType 不支持的房间类型。
+func NewHTTPErrorBadRoomType() *HTTPError {
+	return &HTTPError{
+		Code:    HTTPErrorBadRoomType,
+		Summary: "unsupported room type",
 	}
 }
 
@@ -206,6 +216,14 @@ func NewHTTPErrorUserWatching() *HTTPError {
 	return &HTTPError{
 		Code:    HTTPErrorUserWatching,
 		Summary: "user is watching",
+	}
+}
+
+// NewHTTPErrorUserJoined 用户已经加入连麦，不能创建直播间或进入其他直播间。
+func NewHTTPErrorUserJoined() *HTTPError {
+	return &HTTPError{
+		Code:    HTTPErrorUserJoined,
+		Summary: "user joined",
 	}
 }
 

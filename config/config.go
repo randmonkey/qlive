@@ -138,6 +138,8 @@ type Config struct {
 	// debug等级，为1时输出info/warn/error日志，为0除以上外还输出debug日志
 	DebugLevel int    `json:"debug_level"`
 	ListenAddr string `json:"listen_addr"`
+	// 默认头像列表，用户新注册时随机从中选取一个作为初始头像。
+	DefaultAvatars []string `json:"default_avatars"`
 
 	WsConf       *WebSocketConf      `json:"websocket_conf"`
 	Signaling    *SignalingConfig    `json:"signaling"`
@@ -153,8 +155,9 @@ type Config struct {
 // NewSample 返回样例配置。
 func NewSample() *Config {
 	return &Config{
-		DebugLevel: 0,
-		ListenAddr: ":8080",
+		DebugLevel:     0,
+		ListenAddr:     ":8080",
+		DefaultAvatars: []string{"1.jpg"},
 		WsConf: &WebSocketConf{
 			ListenAddr: ":8082",
 			ServeURI:   "/qlive",

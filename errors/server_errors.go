@@ -41,6 +41,7 @@ const (
 	ServerErrorUserBroadcasting     = 10009
 	ServerErrorUserWatching         = 10010
 	ServerErrorSMSSendTooFrequent   = 10011
+	ServerErrorUserJoined           = 10012
 	ServerErrorMongoOpFail          = 11000
 	// 2开头表示外部服务错误。
 	ServerErrorSMSSendFail = 20001

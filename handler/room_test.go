@@ -107,20 +107,34 @@ func TestCreateRoom(t *testing.T) {
 	testCases := []struct {
 		userID             string
 		roomName           string
+		roomType           string
 		maxRooms           int
 		expectedStatusCode int
+		expectedRoomStatus string
 	}{
 		{
 			userID:             "user-0",
 			roomName:           "room-0",
+			roomType:           "pk",
 			maxRooms:           10,
 			expectedStatusCode: 200,
+			expectedRoomStatus: "single",
 		},
 		{
 			userID:             "user-1",
 			roomName:           "room-1",
+			roomType:           "pk",
 			maxRooms:           10,
 			expectedStatusCode: 200,
+			expectedRoomStatus: "single",
+		},
+		{
+			userID:             "user-1",
+			roomName:           "room-1",
+			roomType:           "voice",
+			maxRooms:           10,
+			expectedStatusCode: 200,
+			expectedRoomStatus: "voiceLive",
 		},
 		{
 			userID:             "user-1",
@@ -130,19 +144,29 @@ func TestCreateRoom(t *testing.T) {
 		},
 		{
 			userID:             "user-1",
+			roomName:           "room-2",
+			roomType:           "invalid",
+			maxRooms:           10,
+			expectedStatusCode: 400,
+		},
+		{
+			userID:             "user-1",
 			roomName:           "room-1",
+			roomType:           "pk",
 			maxRooms:           1,
 			expectedStatusCode: 503,
 		},
 		{
 			userID:             "user-0",
 			roomName:           "room-1",
+			roomType:           "pk",
 			maxRooms:           10,
 			expectedStatusCode: 403,
 		},
 		{
 			userID:             "user-1",
 			roomName:           "room-0",
+			roomType:           "pk",
 			maxRooms:           10,
 			expectedStatusCode: 409,
 		},
@@ -156,6 +180,7 @@ func TestCreateRoom(t *testing.T) {
 					ID:      "room-0",
 					Name:    "room-0",
 					Creator: "user-0",
+					Status:  protocol.LiveRoomStatusSingle,
 				},
 			},
 			roomAudiences: map[string][]string{},
@@ -170,12 +195,14 @@ func TestCreateRoom(t *testing.T) {
 		// intitialize test recorder and context
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
-		c.Set(protocol.XLogKey, xlog.New(fmt.Sprintf("test-create-room-%d", i)))
+		xl := xlog.New(fmt.Sprintf("test-create-room-%d", i))
+		c.Set(protocol.XLogKey, xl)
 		c.Set(protocol.UserIDContextKey, testCase.userID)
 		// build request
 		createRoomReq := &protocol.CreateRoomArgs{
 			UserID:   testCase.userID,
 			RoomName: testCase.roomName,
+			RoomType: testCase.roomType,
 		}
 		buf, err := json.Marshal(createRoomReq)
 		assert.Nilf(t, err, "failed to build request body for case %d, error %v", i, err)
@@ -186,6 +213,14 @@ func TestCreateRoom(t *testing.T) {
 
 		handler.CreateRoom(c)
 		assert.Equalf(t, testCase.expectedStatusCode, w.Code, "code is not the same as expected for test case %d", i)
+		if testCase.expectedStatusCode == http.StatusOK {
+			roomResp := &protocol.CreateRoomResponse{}
+			err := json.Unmarshal(w.Body.Bytes(), &roomResp)
+			assert.Nilf(t, err, "should parse create result successfully for test case %d", i)
+			room, err := mockRoom.GetRoomByID(xl, roomResp.RoomID)
+			assert.Nilf(t, err, "should get room %s successfully for test case %d", roomResp.RoomID, i)
+			assert.Equalf(t, testCase.expectedRoomStatus, string(room.Status), "room status should be equal for test case %d", i)
+		}
 	}
 }
 
@@ -194,12 +229,14 @@ func TestListAllRooms(t *testing.T) {
 	room0 := &protocol.LiveRoom{
 		ID:      "room-0",
 		Name:    "room0",
+		Type:    protocol.RoomTypePK,
 		Creator: "user-0",
 		Status:  protocol.LiveRoomStatusSingle,
 	}
 	pkRoom1 := &protocol.LiveRoom{
 		ID:       "pkroom-1",
 		Name:     "pk1",
+		Type:     protocol.RoomTypePK,
 		Creator:  "user-1",
 		Status:   protocol.LiveRoomStatusPK,
 		PKAnchor: "user-2",
@@ -207,6 +244,7 @@ func TestListAllRooms(t *testing.T) {
 	pkRoom2 := &protocol.LiveRoom{
 		ID:       "pkroom-2",
 		Name:     "pk2",
+		Type:     protocol.RoomTypePK,
 		Creator:  "user-2",
 		Status:   protocol.LiveRoomStatusPK,
 		PKAnchor: "user-1",
