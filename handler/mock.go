@@ -301,6 +301,25 @@ func (m *mockRoom) GetAudienceNumber(xl *xlog.Logger, roomID string) (int, error
 	return len(m.roomAudiences[roomID]), nil
 }
 
+func (m *mockRoom) GetAllAudiences(xl *xlog.Logger, roomID string) ([]*protocol.ActiveUser, error) {
+	ret := []*protocol.ActiveUser{}
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+	_, ok := m.rooms[roomID]
+	if !ok {
+		return ret, &errors.ServerError{Code: errors.ServerErrorRoomNotFound}
+	}
+	for _, id := range m.roomAudiences[roomID] {
+		user := &protocol.ActiveUser{
+			ID:     id,
+			Room:   roomID,
+			Status: protocol.UserStatusWatching,
+		}
+		ret = append(ret, user)
+	}
+	return ret, nil
+}
+
 type mockUpload struct{}
 
 func (m *mockUpload) GetUploadToken(xl *xlog.Logger, userID string, filename string, expireSeconds int) (string, error) {

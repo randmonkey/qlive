@@ -456,7 +456,7 @@ func (s *SignalingService) onPKTimeout(proposerID string, proposerRoomID string,
 		}
 		s.Notify(s.xl, receiverID, protocol.MT_PKTimeoutNotify, msg)
 		if err != nil {
-			s.xl.Warnf("failed to notice receiver %s,error %v", receiver, err)
+			s.xl.Warnf("failed to notice receiver %s,error %v", receiverID, err)
 		}
 	}
 	return nil
