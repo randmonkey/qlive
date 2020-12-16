@@ -22,6 +22,8 @@ type SignalingConfig struct {
 	Type string `json:"type" validate:"nonzero"`
 	// PKRequestTimeoutSecond PK请求超时时间。
 	PKRequestTimeoutSecond int `json:"pk_request_timeout_s"`
+	// JoinRequestTimeoutSecond 连麦请求超时时间。
+	JoinRequestTimeoutSecond int `json:"join_request_timeout_s"`
 }
 
 // WebSocketConf websocket长连接配置。

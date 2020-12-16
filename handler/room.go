@@ -68,6 +68,8 @@ type RoomInterface interface {
 	UpdateRoom(xl *xlog.Logger, id string, room *protocol.LiveRoom) (*protocol.LiveRoom, error)
 	// GetAudienceNumber 获取房间内观众人数。
 	GetAudienceNumber(xl *xlog.Logger, roomID string) (int, error)
+	// GetAllAudiences 获取房间内全部观众信息。
+	GetAllAudiences(xl *xlog.Logger, roomID string) ([]*protocol.ActiveUser, error)
 }
 
 // @Tags qlive api
@@ -142,8 +144,38 @@ func (h *RoomHandler) makeGetRoomResponse(xl *xlog.Logger, room *protocol.LiveRo
 			}
 		}
 	}
-	// TODO:若为语音房，添加上麦观众信息。
+
 	return &getRoomResp, nil
+}
+
+func (h *RoomHandler) getJoinedAudiences(xl *xlog.Logger, room *protocol.LiveRoom) ([]protocol.JoinedAudience, error) {
+	ret := []protocol.JoinedAudience{}
+	if room.Type == protocol.RoomTypeVoice {
+		audiences, err := h.Room.GetAllAudiences(xl, room.ID)
+		if err != nil {
+			xl.Errorf("failed to get all audiences of room %s, error %v", room.ID, err)
+			return nil, err
+		}
+		for _, audience := range audiences {
+			if audience.Status == protocol.UserStatusJoined && audience.JoinPosition != nil {
+				audienceAccount, err := h.Account.GetAccountByID(xl, audience.ID)
+				if err != nil {
+					xl.Errorf("failed to get account info of user %s, error %v", audience.ID, err)
+					continue
+				}
+				joinPosition := *audience.JoinPosition
+				ret = append(ret,
+					protocol.JoinedAudience{
+						Position:  joinPosition,
+						ID:        audience.ID,
+						Nickname:  audienceAccount.Nickname,
+						Gender:    audienceAccount.Gender,
+						AvatarURL: audienceAccount.AvatarURL,
+					})
+			}
+		}
+	}
+	return ret, nil
 }
 
 // ListCanPKRooms 列出当前主播可以PK的房间列表。
@@ -296,6 +328,7 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 		room.Status = protocol.LiveRoomStatusSingle
 	case protocol.RoomTypeVoice:
 		room.Status = protocol.LiveRoomStatusVoiceLive
+		room.MaxJoinAudiences = protocol.DefaultMaxJoinAudiences
 	default:
 		room.Status = protocol.LiveRoomStatusSingle
 	}
@@ -473,7 +506,15 @@ func (h *RoomHandler) GetRoom(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, httpErr)
 		return
 	}
-	xl.Debugf("user %s get room info of room %s", userID, roomID)
+	if room.Type == protocol.RoomTypeVoice {
+		joinedAudiences, err := h.getJoinedAudiences(xl, room)
+		if err != nil {
+			xl.Errorf("failed to get joined audiences of room %s,error %v", room.ID, err)
+		} else {
+			resp.JoinedAudiences = joinedAudiences
+		}
+	}
+	xl.Debugf("user %s get info of room %s", userID, roomID)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -794,6 +835,14 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 	if updatedRoom.Type == protocol.RoomTypeVoice {
 		rtcRoomToken := h.generateRTCRoomToken(updatedRoom.ID, userID, "user")
 		ret.RTCRoomToken = rtcRoomToken
+		joinedAudieces, err := h.getJoinedAudiences(xl, updatedRoom)
+		if err != nil {
+			xl.Errorf("failed to get joined audiences of room %s, error %v", args.RoomID, err)
+		} else {
+			ret.JoinedAudiences = joinedAudieces
+		}
+		// 生成websocket的连接地址。
+		ret.WSURL = h.generateWSURL(xl, c.Request.Host)
 	}
 
 	c.JSON(http.StatusOK, ret)

@@ -38,21 +38,31 @@ type pkRequest struct {
 	receiverID string
 }
 
+type joinRequest struct {
+	roomID    string
+	reqUserID string
+}
+
 // SignalingService 处理各种控制信息。
 type SignalingService struct {
-	xl               *xlog.Logger
-	accountCtl       *AccountController
-	roomCtl          *RoomController
-	pkRequestLock    sync.RWMutex
-	pkRequestAnswers map[pkRequest]chan bool
-	pkTimeout        time.Duration
-	rtcConfig        *config.QiniuRTCConfig
-	Notify           func(xl *xlog.Logger, userID string, msgType string, msg MarshallableMessage) error
+	xl                 *xlog.Logger
+	accountCtl         *AccountController
+	roomCtl            *RoomController
+	pkRequestLock      sync.RWMutex
+	pkRequestAnswers   map[pkRequest]chan bool
+	pkTimeout          time.Duration
+	joinRequestLock    sync.RWMutex
+	joinRequestAnswers map[joinRequest]chan bool
+	joinTimeout        time.Duration
+	rtcConfig          *config.QiniuRTCConfig
+	Notify             func(xl *xlog.Logger, userID string, msgType string, msg MarshallableMessage) error
 }
 
 const (
 	// DefaultPKRequestTimeout 默认的PK请求超时时间。
 	DefaultPKRequestTimeout = 10 * time.Second
+	// DefaultJoinRequestTimeout 默认的连麦请求超时时间。
+	DefaultJoinRequestTimeout = 10 * time.Second
 )
 
 // NewSignalingService 创建新的控制信息服务。
@@ -66,7 +76,12 @@ func NewSignalingService(xl *xlog.Logger, conf *config.Config) (*SignalingServic
 	} else {
 		pkTimeout = time.Duration(conf.Signaling.PKRequestTimeoutSecond) * time.Second
 	}
-
+	var joinTimeout time.Duration
+	if conf.Signaling.JoinRequestTimeoutSecond <= 0 {
+		joinTimeout = DefaultJoinRequestTimeout
+	} else {
+		joinTimeout = time.Duration(conf.Signaling.JoinRequestTimeoutSecond) * time.Second
+	}
 	accountCtl, err := NewAccountController(conf.Mongo.URI, conf.Mongo.Database, xl)
 	if err != nil {
 		xl.Errorf("failed to create account controller, error %v", err)
@@ -78,12 +93,14 @@ func NewSignalingService(xl *xlog.Logger, conf *config.Config) (*SignalingServic
 		return nil, err
 	}
 	return &SignalingService{
-		xl:               xl,
-		accountCtl:       accountCtl,
-		roomCtl:          roomCtl,
-		pkRequestAnswers: make(map[pkRequest]chan bool),
-		pkTimeout:        pkTimeout,
-		rtcConfig:        conf.RTC,
+		xl:                 xl,
+		accountCtl:         accountCtl,
+		roomCtl:            roomCtl,
+		pkRequestAnswers:   make(map[pkRequest]chan bool),
+		pkTimeout:          pkTimeout,
+		joinRequestAnswers: make(map[joinRequest]chan bool),
+		joinTimeout:        joinTimeout,
+		rtcConfig:          conf.RTC,
 	}, nil
 }
 
@@ -111,6 +128,12 @@ func (s *SignalingService) OnMessage(xl *xlog.Logger, senderID string, msg []byt
 		return s.OnAnswerPK(xl, senderID, msgBody)
 	case protocol.MT_EndPKRequest:
 		return s.OnEndPK(xl, senderID, msgBody)
+	case protocol.MTStartJoinRequest:
+		return s.OnStartJoin(xl, senderID, msgBody)
+	case protocol.MTAnswerJoinRequest:
+		return s.OnAnswerJoin(xl, senderID, msgBody)
+	case protocol.MTEndJoinRequest:
+		return s.OnEndJoin(xl, senderID, msgBody)
 	case protocol.MT_DisconnectNotify:
 		return s.OnUserOffline(xl, senderID)
 	}
@@ -829,6 +852,395 @@ func (s *SignalingService) OnEndPK(xl *xlog.Logger, senderID string, msgBody []b
 	return nil
 }
 
+func (s *SignalingService) addJoinRequest(roomID string, reqUserID string) chan bool {
+	s.joinRequestLock.Lock()
+	defer s.joinRequestLock.Unlock()
+	req := joinRequest{roomID: roomID, reqUserID: reqUserID}
+	answerChan := make(chan bool)
+	s.joinRequestAnswers[req] = answerChan
+	return answerChan
+}
+
+func (s *SignalingService) removeJoinRequest(roomID string, reqUserID string) {
+	s.joinRequestLock.Lock()
+	defer s.joinRequestLock.Unlock()
+	req := joinRequest{roomID: roomID, reqUserID: reqUserID}
+	delete(s.joinRequestAnswers, req)
+}
+
+func (s *SignalingService) answerJoinRequest(roomID string, reqUserID string, accept bool) {
+	s.joinRequestLock.RLock()
+	defer s.joinRequestLock.RUnlock()
+	req := joinRequest{roomID: roomID, reqUserID: reqUserID}
+	answerChan, ok := s.joinRequestAnswers[req]
+	if ok {
+		answerChan <- accept
+	}
+}
+
+func (s *SignalingService) waitJoinTimeout(xl *xlog.Logger, roomID string, reqUserID string) {
+	t := time.NewTimer(s.joinTimeout)
+	joinAnswer := s.addJoinRequest(roomID, reqUserID)
+	if xl == nil {
+		xl = s.xl
+	}
+	xl = xl.Spawn("wait-join-timeout")
+	select {
+	case <-t.C:
+		err := s.onJoinTimeout(xl, roomID, reqUserID)
+		if err != nil {
+			xl.Errorf("failed to process join request time out, user %s, room %s, error %v", reqUserID, roomID, err)
+		}
+	case accept := <-joinAnswer:
+		xl.Debugf("user %s join room %s, accept %v", reqUserID, roomID, accept)
+	}
+}
+
+func (s *SignalingService) onJoinTimeout(xl *xlog.Logger, roomID string, reqUserID string) error {
+	timeoutNotice := &protocol.JoinTimeoutNotify{
+		RoomID:    roomID,
+		ReqUserID: reqUserID,
+	}
+
+	user, err := s.accountCtl.GetActiveUserByID(xl, reqUserID)
+	if err != nil {
+		xl.Infof("cannot find user %s, error %v", reqUserID, err)
+	} else {
+		// 恢复观众状态至观看中。
+		if user.Status == protocol.UserStatusJoinWait {
+			user.Status = protocol.UserStatusWatching
+			user.JoinPosition = nil
+			_, err = s.accountCtl.UpdateActiveUser(xl, user.ID, user)
+			if err != nil {
+				xl.Errorf("failed to update status of user %s, error %v", user.ID, err)
+				return err
+			}
+		}
+		// 通知观众。
+		s.Notify(xl, user.ID, protocol.MTJoinTimeoutNotify, timeoutNotice)
+	}
+	room, err := s.roomCtl.GetRoomByID(xl, roomID)
+	if err != nil {
+		xl.Infof("cannot find room %s, error %v", roomID, err)
+	} else {
+		// 通知主播。
+		if room.Type == protocol.RoomTypeVoice {
+			s.Notify(xl, room.Creator, protocol.MTJoinTimeoutNotify, timeoutNotice)
+		}
+	}
+
+	return nil
+}
+
+// OnStartJoin 观众发出连麦请求。
+func (s *SignalingService) OnStartJoin(xl *xlog.Logger, senderID string, msgBody []byte) error {
+	if xl == nil {
+		xl = s.xl
+	}
+	req := &protocol.StartJoinRequest{}
+	res := &protocol.StartJoinResponse{}
+	// 最后给发起者发送回应。
+	defer func() {
+		res.RPCID = req.RPCID
+		if res.Error == "" {
+			res.Error = errors.WSErrorToString[res.Code]
+		}
+		s.Notify(xl, senderID, protocol.MTStartJoinResponse, res)
+	}()
+	err := req.Unmarshal(msgBody)
+	if err != nil {
+		res.Code = errors.WSErrorUnknownMessage
+		return err
+	}
+	// 未找到房间。
+	room, err := s.roomCtl.GetRoomByID(xl, req.RoomID)
+	if err != nil {
+		res.Code = errors.WSErrorRoomNoExist
+		return err
+	}
+	// 房间类型不是语音房。
+	if room.Type != protocol.RoomTypeVoice || room.Status != protocol.LiveRoomStatusVoiceLive {
+		res.Code = errors.WSErrorRoomTypeWrong
+		return err
+	}
+	// 查看该用户是否在房间中，并且状态为观看中。
+	user, err := s.accountCtl.GetActiveUserByID(xl, senderID)
+	if err != nil {
+		res.Code = errors.WSErrorPlayerNoExist
+		return err
+	}
+	// 查看该观众账号信息。
+	account, err := s.accountCtl.GetAccountByID(xl, senderID)
+	if err != nil {
+		res.Code = errors.WSErrorPlayerNoExist
+		return err
+	}
+	if user.Room != room.ID {
+		res.Code = errors.WSErrorPlayerNotInRoom
+		return fmt.Errorf("user %s not in room %s, cannot join", senderID, room.ID)
+	}
+	if user.Status != protocol.UserStatusWatching {
+		xl.Debugf("user %s in room %s status %v, cannot join", senderID, room.ID, user.Status)
+		res.Code = errors.WSErrorPlayerJoined
+		return fmt.Errorf("user %s joined, cannot join again", senderID)
+	}
+	joinPosition := req.Position
+	if joinPosition < 0 || joinPosition >= room.MaxJoinAudiences {
+		xl.Debugf("user %s requested to join room %s at invalid position: %d", senderID, room.ID, joinPosition)
+		res.Code = errors.WSErrorInvalidJoinPosition
+		return fmt.Errorf("user %s join at invalid position %d", senderID, joinPosition)
+	}
+	// 检查该位置是否已经有其他观众已经上麦/请求上麦。
+	filter := map[string]interface{}{
+		"room":          room.ID,
+		"joinPositioon": joinPosition,
+		"status":        map[string]interface{}{"$in": []string{"joined", "joinWait"}},
+	}
+	positionUser, err := s.accountCtl.GetActiveUserByFields(xl, filter)
+	if err != nil {
+		if err.Error() != "not found" {
+			res.Code = errors.WSErrorJoinPositionBusy
+			return err
+		}
+	} else {
+		xl.Debugf("user %s join room %s at position %d: occupied by %s", senderID, room.ID, joinPosition, positionUser.ID)
+		res.Code = errors.WSErrorJoinPositionBusy
+		return fmt.Errorf("room %s position %d occupied by user %s", room.ID, joinPosition, positionUser.ID)
+	}
+
+	// 更新用户状态。
+	user.Status = protocol.UserStatusJoinWait
+	user.JoinPosition = &joinPosition
+	_, err = s.accountCtl.UpdateActiveUser(xl, senderID, user)
+	if err != nil {
+		xl.Errorf("failed to update user %s status, error %v", senderID, err)
+		res.Code = errors.WSErrorInvalidParameter
+		return err
+	}
+	// 通知主播有观众申请连麦。
+	joinNotice := &protocol.JoinRequestNotify{
+		RoomID:    room.ID,
+		ReqUserID: senderID,
+		Nickname:  account.Nickname,
+		Gender:    account.Gender,
+		AvatarURL: account.AvatarURL,
+		Position:  req.Position,
+	}
+	s.Notify(xl, room.Creator, protocol.MTRequestJoinNotify, joinNotice)
+	// 等待连麦请求超时或被响应。
+	go s.waitJoinTimeout(xl, req.RoomID, senderID)
+	// 回复观众申请连麦成功。
+	res.Code = errors.WSErrorOK
+	return nil
+}
+
+// OnAnswerJoin 处理主播应答连麦。
+func (s *SignalingService) OnAnswerJoin(xl *xlog.Logger, senderID string, msgBody []byte) error {
+	if xl == nil {
+		xl = s.xl
+	}
+	// 0.解析请求。
+	req := &protocol.AnswerJoinRequest{}
+	res := &protocol.AnswerJoinResponse{}
+	// 最后给请求者发送回应。
+	defer func() {
+		res.RPCID = req.RPCID
+		if res.Error == "" {
+			res.Error = errors.WSErrorToString[res.Code]
+		}
+		s.Notify(xl, senderID, protocol.MTAnswerJoinResponse, res)
+	}()
+
+	err := req.Unmarshal(msgBody)
+	if err != nil {
+		res.Code = errors.WSErrorUnknownMessage
+		return err
+	}
+	// 1. 检查房间是否存在
+	room, err := s.roomCtl.GetRoomByID(xl, req.RoomID)
+	if err != nil {
+		res.Code = errors.WSErrorRoomNoExist
+		return err
+	}
+	// 1.1 检查房间是否是语音房
+	if room.Type != protocol.RoomTypeVoice {
+		res.Code = errors.WSErrorRoomTypeWrong
+		return err
+	}
+	// 2. 检查用户是否是主播
+	user, err := s.accountCtl.GetActiveUserByID(xl, senderID)
+	if err != nil {
+		res.Code = errors.WSErrorPlayerNoExist
+		return err
+	}
+	if user.ID != room.Creator {
+		res.Code = errors.WSErrorNoPermission
+		return err
+	}
+	// 3. 检查申请上麦的观众是否存在
+	joinAudience, err := s.accountCtl.GetActiveUserByID(xl, req.ReqUserID)
+	if err != nil {
+		res.Code = errors.WSErrorPlayerNoExist
+		return err
+	}
+	joinAudienceAccount, err := s.accountCtl.GetAccountByID(xl, req.ReqUserID)
+	if err != nil {
+		res.Code = errors.WSErrorPlayerNoExist
+		return err
+	}
+	// 4. 检查申请上麦的观众是否在房间及当前状态
+	if joinAudience.Room != room.ID {
+		res.Code = errors.WSErrorPlayerNotInRoom
+		return fmt.Errorf("user %s not in room %s, cannot join", req.ReqUserID, req.RoomID)
+	}
+	if joinAudience.Status != protocol.UserStatusJoinWait || joinAudience.JoinPosition == nil {
+		xl.Debugf("user %s status %v, not %v, cannot answer join", joinAudience.ID, joinAudience.Status, protocol.UserStatusJoinWait)
+		res.Code = errors.WSErrorPlayerNotJoined
+		return fmt.Errorf("user %s status %s, cannot answer join", req.ReqUserID, joinAudience.Status)
+	}
+	// 5. 更新房间与观众状态。
+	if req.Accept {
+		// 更新观众状态为连麦中。
+		joinAudience.Status = protocol.UserStatusJoined
+		_, err = s.accountCtl.UpdateActiveUser(xl, joinAudience.ID, joinAudience)
+		if err != nil {
+			xl.Errorf("failed to change user %s status to joined", joinAudience.ID)
+			res.Code = errors.WSErrorInvalidParameter
+			return err
+		}
+		// 获取观众列表。
+		audiences, err := s.roomCtl.GetAllAudiences(xl, room.ID)
+		if err != nil {
+			xl.Errorf("failed to get all audiences in room %s", room.ID)
+			res.Code = errors.WSErrorInvalidParameter
+			return err
+		}
+		// 通知请求者连麦被接受。
+		answerNotice := &protocol.JoinAnswerNotify{
+			RoomID:    room.ID,
+			ReqUserID: req.ReqUserID,
+			Accept:    true,
+		}
+		s.Notify(xl, req.ReqUserID, protocol.MTAnswerJoinNotify, answerNotice)
+		// 通知所有观众有人加入连麦。
+		joinNotice := &protocol.AudienceJoinNotify{
+			RoomID:    room.ID,
+			ReqUserID: req.ReqUserID,
+			Position:  *joinAudience.JoinPosition,
+			Nickname:  joinAudienceAccount.Nickname,
+			Gender:    joinAudienceAccount.Gender,
+			AvatarURL: joinAudienceAccount.AvatarURL,
+		}
+		for _, audience := range audiences {
+			s.Notify(xl, audience.ID, protocol.MTAudienceJoinedNotify, joinNotice)
+		}
+	} else {
+		// 更新观众状态为观看中。
+		joinAudience.Status = protocol.UserStatusWatching
+		joinAudience.JoinPosition = nil
+		_, err = s.accountCtl.UpdateActiveUser(xl, joinAudience.ID, joinAudience)
+		if err != nil {
+			xl.Errorf("failed to change user %s status to watching", joinAudience.ID)
+			res.Code = errors.WSErrorInvalidParameter
+			return err
+		}
+		// 通知观众。
+		answerNotice := &protocol.JoinAnswerNotify{
+			RoomID:    room.ID,
+			ReqUserID: req.ReqUserID,
+			Accept:    false,
+		}
+		s.Notify(xl, req.ReqUserID, protocol.MTAnswerJoinNotify, answerNotice)
+	}
+	// 6. 通知主播请求成功。
+	res.Code = errors.WSErrorOK
+	// 通知等待超时的goroutine连麦请求被响应。
+	s.answerJoinRequest(req.RoomID, req.ReqUserID, req.Accept)
+	return nil
+}
+
+// OnEndJoin 处理观众结束连麦。
+func (s *SignalingService) OnEndJoin(xl *xlog.Logger, senderID string, msgBody []byte) error {
+
+	req := &protocol.EndJoinRequest{}
+	res := &protocol.EndJoinResponse{}
+	// 最后向请求者发送回应。
+	defer func() {
+		res.RPCID = req.RPCID
+		if res.Error == "" {
+			res.Error = errors.WSErrorToString[res.Code]
+		}
+		s.Notify(xl, senderID, protocol.MTEndJoinResponse, res)
+	}()
+	// 0.解析请求。
+	err := req.Unmarshal(msgBody)
+	if err != nil {
+		res.Code = errors.WSErrorUnknownMessage
+		return err
+	}
+	// 1. 检查用户状态。
+	user, err := s.accountCtl.GetActiveUserByID(xl, senderID)
+	if err != nil {
+		res.Code = errors.WSErrorPlayerNoExist
+		return err
+	}
+	account, err := s.accountCtl.GetAccountByID(xl, senderID)
+	if err != nil {
+		res.Code = errors.WSErrorPlayerNoExist
+		return err
+	}
+	if user.Status != protocol.UserStatusJoined || user.JoinPosition == nil {
+		res.Code = errors.WSErrorPlayerNotJoined
+		return fmt.Errorf("user %s status %v, cannot end join", user.ID, user.Status)
+	}
+	joinPosition := *(user.JoinPosition)
+	if user.Room != req.RoomID {
+		res.Code = errors.WSErrorPlayerNotInRoom
+		return fmt.Errorf("user %s not in room %s, cannot end join", user.ID, req.RoomID)
+	}
+	// 检查房间是否存在。
+	room, err := s.roomCtl.GetRoomByID(xl, user.Room)
+	if err != nil {
+		res.Code = errors.WSErrorRoomNoExist
+		return err
+	}
+	// 2. 更新观众的用户状态。
+	user.Status = protocol.UserStatusWatching
+	user.JoinPosition = nil
+	_, err = s.accountCtl.UpdateActiveUser(xl, senderID, user)
+	if err != nil {
+		res.Code = errors.WSErrorInvalidParameter
+		return err
+	}
+
+	// 3. 通知主播与其他观众。
+	// 3.0 获取观众列表
+	audiences, err := s.roomCtl.GetAllAudiences(xl, user.Room)
+	if err != nil {
+		xl.Errorf("failed to list audiences in room %s", user.Room)
+		res.Code = errors.WSErrorInvalidParameter
+		return err
+	}
+	endNotice := &protocol.EndJoinNotify{
+		RoomID:    user.Room,
+		ReqUserID: senderID,
+		Position:  joinPosition,
+		Nickname:  account.Nickname,
+		Gender:    account.Gender,
+		AvatarURL: account.AvatarURL,
+	}
+	// 3.1 通知主播。
+	s.Notify(xl, room.Creator, protocol.MTEndJoinNotify, endNotice)
+	// 3.2 通知其他观众。
+	for _, audience := range audiences {
+		if audience.ID != senderID {
+			s.Notify(xl, audience.ID, protocol.MTEndJoinNotify, endNotice)
+		}
+	}
+	res.Code = errors.WSErrorOK
+	return nil
+}
+
 // OnUserOffline 处理客户端下线。
 func (s *SignalingService) OnUserOffline(xl *xlog.Logger, userID string) error {
 	if xl == nil {
@@ -840,51 +1252,120 @@ func (s *SignalingService) OnUserOffline(xl *xlog.Logger, userID string) error {
 		return err
 	}
 	xl.Debugf("user %s offline:processing start, current status %v, in room %s", userID, user.Status, user.Room)
-	// 找出用户的房间。
-	var room *protocol.LiveRoom
+	// 如果用户在直播中，找出用户创建的的房间。
 	if protocol.IsUserBroadCasting(user.Status) {
-		room, err = s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": userID})
+		room, err := s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": userID})
 		if err != nil {
-			xl.Debugf("cannot find user %s's room, user status is %v, error %v", userID, user.Status, err)
+			xl.Infof("cannot find user %s's room, user status is %v, error %v", userID, user.Status, err)
 		}
 		if room != nil {
 			xl.Debugf("will close room %s created by user %s", room.ID, userID)
+			err := s.processAnchorLeave(xl, user, room)
+			if err != nil {
+				return err
+			}
+		}
+	} else if user.Room != "" {
+		room, err := s.roomCtl.GetRoomByID(xl, user.Room)
+		if err != nil {
+			xl.Infof("cannot find user %s's room, user status %v, error %v", userID, user.Status, err)
+			return err
+		}
+		err = s.processAudienceLeave(xl, user, room)
+		if err != nil {
+			return err
 		}
 	}
 
+	xl.Debugf("user %s offline:processing end", userID)
+	return nil
+}
+
+// processAnchorLeave 处理主播离开。
+func (s *SignalingService) processAnchorLeave(xl *xlog.Logger, user *protocol.ActiveUser, room *protocol.LiveRoom) error {
+	if xl == nil {
+		xl = s.xl
+	}
 	// 如果是PK状态，向其PK对方发送消息。
 	if user.Status == protocol.UserStatusPKLive {
-		if room != nil {
-			xl.Debugf("user %s's room %s is in PK, notify PK anchor %s", userID, room.ID, room.PKAnchor)
-			pkAnchorID := room.PKAnchor
-			endMessage := &protocol.PKEndNotify{
-				PKRoomID: room.ID,
-			}
-			s.Notify(xl, pkAnchorID, protocol.MT_PKEndNotify, endMessage)
-			// 更新PK对方主播的用户状态和房间状态。
-			pkActiveUser, err := s.accountCtl.GetActiveUserByID(xl, pkAnchorID)
+		xl.Debugf("user %s's room %s is in PK, notify PK anchor %s", user.ID, room.ID, room.PKAnchor)
+		pkAnchorID := room.PKAnchor
+		endMessage := &protocol.PKEndNotify{
+			PKRoomID: room.ID,
+		}
+		s.Notify(xl, pkAnchorID, protocol.MT_PKEndNotify, endMessage)
+		// 更新PK对方主播的用户状态和房间状态。
+		pkActiveUser, err := s.accountCtl.GetActiveUserByID(xl, pkAnchorID)
+		if err == nil {
+			pkRoom, err := s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": pkAnchorID})
 			if err == nil {
-				pkRoom, err := s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": pkAnchorID})
-				if err == nil {
-					pkActiveUser.Status = protocol.UserStatusSingleLive
-					pkActiveUser.Room = pkRoom.ID
-					s.accountCtl.UpdateActiveUser(xl, pkAnchorID, pkActiveUser)
-					pkRoom.Status = protocol.LiveRoomStatusSingle
-					pkRoom.PKAnchor = ""
-					s.roomCtl.UpdateRoom(xl, pkRoom.ID, pkRoom)
-				}
+				pkActiveUser.Status = protocol.UserStatusSingleLive
+				pkActiveUser.Room = pkRoom.ID
+				s.accountCtl.UpdateActiveUser(xl, pkAnchorID, pkActiveUser)
+				pkRoom.Status = protocol.LiveRoomStatusSingle
+				pkRoom.PKAnchor = ""
+				s.roomCtl.UpdateRoom(xl, pkRoom.ID, pkRoom)
 			}
 		}
 	}
+
+	audiences, err := s.roomCtl.GetAllAudiences(xl, room.ID)
+	if err != nil {
+		xl.Errorf("failed to get all audiences of room %s, error %v", room.ID, err)
+		return err
+	}
+
 	// 关闭该房间。
 	if room != nil {
-		err := s.roomCtl.CloseRoom(xl, userID, room.ID)
+		err := s.roomCtl.CloseRoom(xl, user.ID, room.ID)
 		if err != nil {
-			xl.Errorf("close room %s created by %s failed, error %v", room.ID, userID, err)
+			xl.Errorf("close room %s created by %s failed, error %v", room.ID, user.ID, err)
 			return err
 		}
-		xl.Infof("room %s created by %s has been closed", room.ID, userID)
+		xl.Infof("room %s created by %s has been closed", room.ID, user.ID)
 	}
-	xl.Debugf("user %s offline:processing end", userID)
+	// 通知观众房间已关闭。
+	closeNotice := &protocol.RoomCloseNotify{RoomID: room.ID}
+	for _, audience := range audiences {
+		s.Notify(xl, audience.ID, protocol.MTRoomCloseNotify, closeNotice)
+	}
+	return nil
+}
+
+// processAudienceLeave 处理观众离开。
+func (s *SignalingService) processAudienceLeave(xl *xlog.Logger, user *protocol.ActiveUser, room *protocol.LiveRoom) error {
+	if xl == nil {
+		xl = s.xl
+	}
+	err := s.roomCtl.LeaveRoom(xl, user.ID, room.ID)
+	if err != nil {
+		xl.Errorf("failed to leave room, user %s, room %s", user.ID, room.ID)
+		return err
+	}
+	if room.Type == protocol.RoomTypeVoice {
+		// 如果为连麦观众，通知主播与其他观众连麦已结束。
+		if user.Status == protocol.UserStatusJoined && user.JoinPosition != nil {
+			joinPosition := *user.JoinPosition
+			endNotice := &protocol.EndJoinNotify{
+				RoomID:    user.Room,
+				ReqUserID: user.ID,
+				Position:  joinPosition,
+			}
+			// 通知主播。
+			s.Notify(xl, room.Creator, protocol.MTEndJoinNotify, endNotice)
+			// 获取观众列表。
+			audiences, err := s.roomCtl.GetAllAudiences(xl, user.Room)
+			if err != nil {
+				xl.Errorf("failed to list audiences in room %s,error %v", user.Room, err)
+			} else {
+				for _, audience := range audiences {
+					if audience.ID != user.ID {
+						s.Notify(xl, audience.ID, protocol.MTEndJoinNotify, endNotice)
+					}
+				}
+			}
+
+		}
+	}
 	return nil
 }

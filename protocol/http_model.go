@@ -66,6 +66,16 @@ type UpdateProfileArgs struct {
 // UpdateProfileResponse 修改用户信息的返回结果。
 type UpdateProfileResponse UserInfo
 
+// JoinedAudience 加入连麦的观众信息。
+type JoinedAudience struct {
+	Position int `json:"position"`
+	// 以下同UserInfo 结构体
+	ID        string `json:"id"`
+	Nickname  string `json:"nickname"`
+	Gender    string `json:"gender"`
+	AvatarURL string `json:"avatar"`
+}
+
 // GetRoomResponse 获取房间信息结果。
 type GetRoomResponse struct {
 	ID   string `json:"id"`
@@ -83,6 +93,9 @@ type GetRoomResponse struct {
 	Status string `json:"status"`
 	// PKAnchor 若房间PK中，返回PK主播的信息。
 	PKAnchor *UserInfo `json:"pkAnchor,omitempty"`
+	// JoinedAudiences 若为语音房且有观众正在连麦，返回连麦中观众的信息。
+	// 仅获取单个房间时会返回这个字段。
+	JoinedAudiences []JoinedAudience `json:"joinedAudiences,omitempty"`
 }
 
 // ListRoomsResponse 列出房间的返回结果。
@@ -116,6 +129,10 @@ type EnterRoomResponse struct {
 	Status string `json:"status"`
 	// PKAnchorID 若正在PK，返回PK主播的信息。未在PK时该字段为空。
 	PKAnchor *UserInfo `json:"pkAnchor,omitempty"`
+	// JoinedAudiences 若为语音房且有观众正在连麦，返回连麦中观众的信息。
+	JoinedAudiences []JoinedAudience `json:"joinedAudiences,omitempty"`
+	// WSURL websocket信令服务器的地址。
+	WSURL string `json:"wsURL,omitempty"`
 }
 
 // LeaveRoomArgs 离开房间的请求。
