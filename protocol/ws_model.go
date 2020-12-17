@@ -40,7 +40,7 @@ const (
 	MTAnswerJoinResponse   = "answer-join-res"  // 回应连麦请求处理结果
 	MTEndJoinRequest       = "end-join"         // 观众结束连麦
 	MTEndJoinResponse      = "end-join-res"     // 结束连麦处理结果
-	MTRequestJoinNotify    = "on-join-reqeust"  // 通知主播有观众申请连麦
+	MTRequestJoinNotify    = "on-join-request"  // 通知主播有观众申请连麦
 	MTAnswerJoinNotify     = "on-join-answer"   // 通知观众连麦请求已被应答（接受/拒绝）
 	MTAudienceJoinedNotify = "on-audience-join" // 通知同房间内其他观众有观众上麦
 	MTEndJoinNotify        = "on-join-end"      // 通知主播与观众连麦结束
