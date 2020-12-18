@@ -800,9 +800,10 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 		return
 	}
 	creatorInfo := protocol.UserInfo{
-		ID:       creator.ID,
-		Nickname: creator.Nickname,
-		Gender:   creator.Gender,
+		ID:        creator.ID,
+		Nickname:  creator.Nickname,
+		Gender:    creator.Gender,
+		AvatarURL: creator.AvatarURL,
 	}
 
 	ret = &protocol.EnterRoomResponse{
@@ -825,9 +826,10 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 			return
 		}
 		pkAnchorInfo = &protocol.UserInfo{
-			ID:       pkAnchor.ID,
-			Nickname: pkAnchor.Nickname,
-			Gender:   pkAnchor.Gender,
+			ID:        pkAnchor.ID,
+			Nickname:  pkAnchor.Nickname,
+			Gender:    pkAnchor.Gender,
+			AvatarURL: pkAnchor.AvatarURL,
 		}
 		ret.PKAnchor = pkAnchorInfo
 	}

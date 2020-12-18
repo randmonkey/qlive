@@ -146,14 +146,17 @@ func (s *SignalingService) OnStartPK(xl *xlog.Logger, senderID string, msgBody [
 		xl = s.xl
 	}
 	req := &protocol.StartPKRequest{}
-	err := req.Unmarshal(msgBody)
-	if err != nil {
-		res := &protocol.StartPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorUnknownMessage,
-			Error: errors.WSErrorToString[errors.WSErrorUnknownMessage],
+	res := &protocol.StartPKResponse{}
+	defer func() {
+		res.RPCID = req.RPCID
+		if res.Error == "" {
+			res.Error = errors.WSErrorToString[res.Code]
 		}
 		s.Notify(xl, senderID, protocol.MT_StartResponse, res)
+	}()
+	err := req.Unmarshal(msgBody)
+	if err != nil {
+		res.Code = errors.WSErrorUnknownMessage
 		return err
 	}
 	xl.Debugf("start pk: user %s, pk room id %s", senderID, req.PKRoomID)
@@ -161,24 +164,14 @@ func (s *SignalingService) OnStartPK(xl *xlog.Logger, senderID string, msgBody [
 	// 获取对方的房间。
 	pkRoom, err := s.roomCtl.GetRoomByID(xl, req.PKRoomID)
 	if err != nil {
-		res := &protocol.StartPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorRoomNoExist,
-			Error: errors.WSErrorToString[errors.WSErrorRoomNoExist],
-		}
-		s.Notify(xl, senderID, protocol.MT_StartResponse, res)
+		res.Code = errors.WSErrorRoomNoExist
 		return err
 	}
 	// 检查房间是否为主播PK房。
 	if pkRoom.Type != protocol.RoomTypePK {
 		// 兼容没有指定type的旧房间
 		if string(pkRoom.Type) != "" {
-			res := &protocol.StartPKResponse{
-				RPCID: req.RPCID,
-				Code:  errors.WSErrorRoomTypeWrong,
-				Error: errors.WSErrorToString[errors.WSErrorRoomTypeWrong],
-			}
-			s.Notify(xl, senderID, protocol.MT_StartResponse, res)
+			res.Code = errors.WSErrorRoomTypeWrong
 			return fmt.Errorf("invalid room type %s", pkRoom.Type)
 		}
 	}
@@ -194,62 +187,32 @@ func (s *SignalingService) OnStartPK(xl *xlog.Logger, senderID string, msgBody [
 	// 获取自己的房间。
 	selfRoom, err := s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": senderID})
 	if err != nil {
-		res := &protocol.StartPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_StartResponse, res)
+		res.Code = errors.WSErrorInvalidParameter
 		return err
 	}
 	if selfRoom.Status != protocol.LiveRoomStatusSingle {
-		res := &protocol.StartPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorRoomInPK,
-			Error: errors.WSErrorToString[errors.WSErrorRoomInPK],
-		}
-		s.Notify(xl, senderID, protocol.MT_StartResponse, res)
+		res.Code = errors.WSErrorRoomInPK
 		return err
 	}
 	// 获取自己和对方的账户信息。
 	pkPlayer, err := s.accountCtl.GetAccountByID(xl, pkRoom.Creator)
 	if err != nil {
-		res := &protocol.StartPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorPlayerNoExist,
-			Error: errors.WSErrorToString[errors.WSErrorPlayerNoExist],
-		}
-		s.Notify(xl, senderID, protocol.MT_StartResponse, res)
+		res.Code = errors.WSErrorPlayerNoExist
 		return err
 	}
 	selfPlayer, err := s.accountCtl.GetAccountByID(xl, senderID)
 	if err != nil {
-		res := &protocol.StartPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_StartResponse, res)
+		res.Code = errors.WSErrorInvalidParameter
 		return err
 	}
 	pkActiveUser, err := s.accountCtl.GetActiveUserByID(xl, pkPlayer.ID)
 	if err != nil {
-		res := &protocol.StartPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_StartResponse, res)
+		res.Code = errors.WSErrorPlayerNoExist
 		return err
 	}
 	selfActiveUser, err := s.accountCtl.GetActiveUserByID(s.xl, selfPlayer.ID)
 	if err != nil {
-		res := &protocol.StartPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_StartResponse, res)
+		res.Code = errors.WSErrorInvalidParameter
 		return err
 	}
 
@@ -266,23 +229,13 @@ func (s *SignalingService) OnStartPK(xl *xlog.Logger, senderID string, msgBody [
 	selfRoom.Status = protocol.LiveRoomStatusWaitPK
 	_, err = s.roomCtl.UpdateRoom(xl, selfRoom.ID, selfRoom)
 	if err != nil {
-		res := &protocol.StartPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_StartResponse, res)
+		res.Code = errors.WSErrorInvalidParameter
 		return err
 	}
 	pkRoom.Status = protocol.LiveRoomStatusWaitPK
 	_, err = s.roomCtl.UpdateRoom(xl, pkRoom.ID, pkRoom)
 	if err != nil {
-		res := &protocol.StartPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_StartResponse, res)
+		res.Code = errors.WSErrorInvalidParameter
 		return err
 	}
 	// 修改用户状态
@@ -291,32 +244,17 @@ func (s *SignalingService) OnStartPK(xl *xlog.Logger, senderID string, msgBody [
 
 	_, err = s.accountCtl.UpdateActiveUser(xl, selfPlayer.ID, selfActiveUser)
 	if err != nil {
-		res := &protocol.StartPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_StartResponse, res)
+		res.Code = errors.WSErrorInvalidParameter
 		return err
 	}
 	_, err = s.accountCtl.UpdateActiveUser(xl, pkPlayer.ID, pkActiveUser)
 	if err != nil {
-		res := &protocol.StartPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_StartResponse, res)
+		res.Code = errors.WSErrorInvalidParameter
 		return err
 	}
 
 	// 成功返回
-	res := &protocol.StartPKResponse{
-		RPCID: req.RPCID,
-		Code:  errors.WSErrorOK,
-		Error: errors.WSErrorToString[errors.WSErrorOK],
-	}
-	s.Notify(xl, senderID, protocol.MT_StartResponse, res)
+	res.Code = errors.WSErrorOK
 	go s.waitPKTimeout(senderID, selfRoom.ID, pkActiveUser.ID, pkRoom.ID)
 	return nil
 }
@@ -486,55 +424,38 @@ func (s *SignalingService) OnAnswerPK(xl *xlog.Logger, senderID string, msgBody 
 	}
 
 	req := &protocol.AnswerPKRequest{}
-	err := req.Unmarshal(msgBody)
-	if err != nil {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorUnknownMessage,
-			Error: errors.WSErrorToString[errors.WSErrorUnknownMessage],
+	res := &protocol.AnswerPKResponse{}
+	defer func() {
+		res.RPCID = req.RPCID
+		if res.Error == "" {
+			res.Error = errors.WSErrorToString[res.Code]
 		}
 		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+	}()
+	err := req.Unmarshal(msgBody)
+	if err != nil {
+		res.Code = errors.WSErrorUnknownMessage
 		return err
 	}
 
 	selfRoom, err := s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": senderID})
 	if err != nil {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+		res.Code = errors.WSErrorRoomNoExist
 		return err
 	}
 	selfPlayer, err := s.accountCtl.GetAccountByID(xl, senderID)
 	if err != nil {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+		res.Code = errors.WSErrorPlayerNoExist
 		return err
 	}
 	selfActiveUser, err := s.accountCtl.GetActiveUserByID(xl, selfPlayer.ID)
 	if err != nil {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+		res.Code = errors.WSErrorPlayerNoExist
 		return err
 	}
 	// 检查自身的房间状态。
 	if selfRoom.Status != protocol.LiveRoomStatusWaitPK {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorRoomNotInPK,
-			Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
-		}
-		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+		res.Code = errors.WSErrorRoomNotInPK
 		return err
 	}
 	// shouldResetStatus 如果响应PK时，出现对方房间不存在（已下播）、状态不对等异常情况，应重置当前直播间与用户状态为单人直播中。
@@ -556,56 +477,33 @@ func (s *SignalingService) OnAnswerPK(xl *xlog.Logger, senderID string, msgBody 
 	}(err)
 	pkRoom, err := s.roomCtl.GetRoomByID(xl, req.ReqRoomID)
 	if err != nil {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorRoomNoExist,
-			Error: errors.WSErrorToString[errors.WSErrorRoomNoExist],
-		}
-		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+		res.Code = errors.WSErrorRoomNoExist
 		shouldResetStatus = true
 		return err
 	}
 	if pkRoom.Status != protocol.LiveRoomStatusWaitPK {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorRoomNotInPK,
-			Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
-		}
-		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+		res.Code = errors.WSErrorRoomNotInPK
+		shouldResetStatus = true
+		return nil
 	}
 	pkPlayer, err := s.accountCtl.GetAccountByID(xl, pkRoom.Creator)
 	if err != nil {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorPlayerNoExist,
-			Error: errors.WSErrorToString[errors.WSErrorPlayerNoExist],
-		}
 		shouldResetStatus = true
-		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+		res.Code = errors.WSErrorPlayerNoExist
 		return err
 	}
 
 	pkActiveUser, err := s.accountCtl.GetActiveUserByID(xl, pkPlayer.ID)
 	if err != nil {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
 		shouldResetStatus = true
-		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+		res.Code = errors.WSErrorPlayerNoExist
 		return err
 	}
 
 	// 检查PK对方的房间状态。
 	if pkRoom.Status != protocol.LiveRoomStatusWaitPK {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorRoomNotInPK,
-			Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
-		}
 		shouldResetStatus = true
-		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+		res.Code = errors.WSErrorRoomNotInPK
 		return err
 	}
 	// 通知发起者
@@ -620,13 +518,8 @@ func (s *SignalingService) OnAnswerPK(xl *xlog.Logger, senderID string, msgBody 
 	}
 	err = s.Notify(xl, pkPlayer.ID, protocol.MT_PKAnswerNotify, answerMessage)
 	if err != nil {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorPlayerOffline,
-			Error: errors.WSErrorToString[errors.WSErrorPlayerOffline],
-		}
 		shouldResetStatus = true
-		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+		res.Code = errors.WSErrorPlayerOffline
 		return err
 	}
 	// 修改房间与用户状态。
@@ -648,49 +541,28 @@ func (s *SignalingService) OnAnswerPK(xl *xlog.Logger, senderID string, msgBody 
 	// 通过controller更新状态。
 	_, err = s.accountCtl.UpdateActiveUser(xl, selfPlayer.ID, selfActiveUser)
 	if err != nil {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+		res.Code = errors.WSErrorInvalidParameter
+		return err
 	}
 	_, err = s.accountCtl.UpdateActiveUser(xl, pkPlayer.ID, pkActiveUser)
 	if err != nil {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+		res.Code = errors.WSErrorInvalidParameter
+		return err
 	}
 	_, err = s.roomCtl.UpdateRoom(xl, selfRoom.ID, selfRoom)
 	if err != nil {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+		res.Code = errors.WSErrorInvalidParameter
+		return err
 	}
 	_, err = s.roomCtl.UpdateRoom(xl, pkRoom.ID, pkRoom)
 	if err != nil {
-		res := &protocol.AnswerPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+		res.Code = errors.WSErrorInvalidParameter
+		return err
 	}
 	s.answerPKRequest(pkPlayer.ID, pkRoom.ID, senderID, selfRoom.ID, req.Accept)
 	// 成功返回。
-	res := &protocol.AnswerPKResponse{
-		ReqRoomID: req.ReqRoomID,
-		RPCID:     req.RPCID,
-		Code:      errors.WSErrorOK,
-		Error:     errors.WSErrorToString[errors.WSErrorOK],
-	}
-	s.Notify(xl, senderID, protocol.MT_AnswerPKResponse, res)
+	res.ReqRoomID = req.ReqRoomID
+	res.Code = errors.WSErrorOK
 	return nil
 }
 
@@ -700,89 +572,57 @@ func (s *SignalingService) OnEndPK(xl *xlog.Logger, senderID string, msgBody []b
 		xl = s.xl
 	}
 	req := &protocol.EndPKRequest{}
-	err := req.Unmarshal(msgBody)
-	if err != nil {
-		res := &protocol.EndPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorUnknownMessage,
-			Error: errors.WSErrorToString[errors.WSErrorUnknownMessage],
+	res := &protocol.EndPKResponse{}
+	defer func() {
+		res.RPCID = req.RPCID
+		if res.Error == "" {
+			res.Error = errors.WSErrorToString[res.Code]
 		}
 		s.Notify(xl, senderID, protocol.MT_EndPKResponse, res)
+	}()
+	err := req.Unmarshal(msgBody)
+	if err != nil {
+		res.Code = errors.WSErrorUnknownMessage
 		return err
 	}
 
 	// 获取当前用户信息。
 	selfActiveUser, err := s.accountCtl.GetActiveUserByID(xl, senderID)
 	if err != nil {
-		res := &protocol.EndPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_EndPKResponse, res)
+		res.Code = errors.WSErrorInvalidParameter
 		return err
 	}
 	if selfActiveUser.Status != protocol.UserStatusPKLive {
-		res := &protocol.EndPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorRoomInPK,
-			Error: errors.WSErrorToString[errors.WSErrorRoomInPK],
-		}
-		s.Notify(xl, senderID, protocol.MT_EndPKResponse, res)
+		res.Code = errors.WSErrorRoomNotInPK
 		return err
 	}
 	// 找到该用户创建的房间。
 	selfRoom, err := s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": senderID})
 	if err != nil {
-		res := &protocol.EndPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_EndPKResponse, res)
+		res.Code = errors.WSErrorInvalidParameter
 		return err
 	}
 	// 找到对方主播的ID。
 	pkAnchorID := selfRoom.PKAnchor
 	pkActiveUser, err := s.accountCtl.GetActiveUserByID(xl, pkAnchorID)
 	if err != nil {
-		res := &protocol.EndPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_EndPKResponse, res)
+		res.Code = errors.WSErrorInvalidParameter
 		return err
 	}
 	// 找到对方主播的房间。
 	pkRoom, err := s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": pkAnchorID})
 	if err != nil {
-		res := &protocol.EndPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorRoomInPK,
-			Error: errors.WSErrorToString[errors.WSErrorRoomInPK],
-		}
-		s.Notify(xl, senderID, protocol.MT_EndPKResponse, res)
+		res.Code = errors.WSErrorRoomNoExist
 		return err
 	}
 	// 状态检查
 	if selfRoom.Status != protocol.LiveRoomStatusPK || pkRoom.Status != protocol.LiveRoomStatusPK {
-		res := &protocol.EndPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorRoomNotInPK,
-			Error: errors.WSErrorToString[errors.WSErrorRoomNotInPK],
-		}
-		s.Notify(xl, senderID, protocol.MT_EndPKResponse, res)
+		res.Code = errors.WSErrorRoomNotInPK
 		return fmt.Errorf("room status not in PK")
 	}
 	// 检查房间ID是否匹配。
 	if selfRoom.ID != req.PKRoomID && pkRoom.ID != req.PKRoomID {
-		res := &protocol.EndPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorNoPermission,
-			Error: errors.WSErrorToString[errors.WSErrorNoPermission],
-		}
-		s.Notify(xl, senderID, protocol.MT_EndPKResponse, res)
+		res.Code = errors.WSErrorNoPermission
 		return fmt.Errorf("user %s does not have permission to end PK with room %s", senderID, req.PKRoomID)
 	}
 	// 向对方发送结束PK推送。
@@ -792,12 +632,7 @@ func (s *SignalingService) OnEndPK(xl *xlog.Logger, senderID string, msgBody []b
 	}
 	err = s.Notify(xl, pkAnchorID, protocol.MT_PKEndNotify, endMessage)
 	if err != nil {
-		res := &protocol.EndPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorPlayerOffline,
-			Error: errors.WSErrorToString[errors.WSErrorPlayerOffline],
-		}
-		s.Notify(xl, senderID, protocol.MT_EndPKResponse, res)
+		res.Code = errors.WSErrorPlayerOffline
 		return err
 	}
 	// 修改状态。TODO:使用事务修改。
@@ -833,21 +668,13 @@ func (s *SignalingService) OnEndPK(xl *xlog.Logger, senderID string, msgBody []b
 	}
 	// 处理更新出错的情况。
 	if updateErr != nil {
-		res := &protocol.EndPKResponse{
-			RPCID: req.RPCID,
-			Code:  errors.WSErrorInvalidParameter,
-			Error: errors.WSErrorToString[errors.WSErrorInvalidParameter],
-		}
-		s.Notify(xl, senderID, protocol.MT_EndPKResponse, res)
+
+		res.Code = errors.WSErrorInvalidParameter
 		// TODO：目前仅包含最后一次出错的错误。
 		return updateErr
 	}
 	// 成功返回。
-	res := &protocol.EndPKResponse{
-		RPCID: req.RPCID,
-		Code:  errors.WSErrorOK,
-		Error: errors.WSErrorToString[errors.WSErrorOK],
-	}
+	res.Code = errors.WSErrorOK
 	s.Notify(xl, senderID, protocol.MT_EndPKResponse, res)
 	return nil
 }
@@ -1132,7 +959,9 @@ func (s *SignalingService) OnAnswerJoin(xl *xlog.Logger, senderID string, msgBod
 			AvatarURL: joinAudienceAccount.AvatarURL,
 		}
 		for _, audience := range audiences {
-			s.Notify(xl, audience.ID, protocol.MTAudienceJoinedNotify, joinNotice)
+			if audience.ID != req.ReqUserID {
+				s.Notify(xl, audience.ID, protocol.MTAudienceJoinedNotify, joinNotice)
+			}
 		}
 	} else {
 		// 更新观众状态为观看中。
@@ -1364,7 +1193,6 @@ func (s *SignalingService) processAudienceLeave(xl *xlog.Logger, user *protocol.
 					}
 				}
 			}
-
 		}
 	}
 	return nil
