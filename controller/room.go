@@ -96,6 +96,7 @@ func (c *RoomController) CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) (*
 			return nil, &errors.ServerError{Code: errors.ServerErrorRoomNameUsed}
 		}
 		// 如果是该用户创建的直播间，返回直播间的现有信息。
+		xl.Infof("user %s already created room %s, return existing room", existingRoom.Creator, existingRoom.ID)
 		return &existingRoom, nil
 	}
 
@@ -142,6 +143,7 @@ func (c *RoomController) CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) (*
 	if err != nil {
 		xl.Errorf("failed to update user status of room creator %s", creatorID)
 	}
+	xl.Infof("user %s created room %s", creatorID, room.ID)
 	return room, nil
 }
 
@@ -184,6 +186,7 @@ func (c *RoomController) CloseRoom(xl *xlog.Logger, userID string, roomID string
 	if err != nil {
 		xl.Errorf("failed to update status of audiences in room %s, error %v", roomID, err)
 	}
+	xl.Infof("user %s closed room %s", userID, roomID)
 	return nil
 }
 
@@ -317,6 +320,7 @@ func (c *RoomController) EnterRoom(xl *xlog.Logger, userID string, roomID string
 		xl.Errorf("failed to update user status of user %s, error %v", userID, err)
 		return nil, err
 	}
+	xl.Infof("user %s entered room %s", userID, roomID)
 	return room, nil
 }
 
@@ -370,6 +374,7 @@ func (c *RoomController) LeaveRoom(xl *xlog.Logger, userID string, roomID string
 	if err != nil {
 		xl.Errorf("failed to update user status of user %s, error %v", userID, err)
 	}
+	xl.Infof("user %s left room %s", userID, roomID)
 	return nil
 }
 

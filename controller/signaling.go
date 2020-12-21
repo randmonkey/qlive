@@ -790,18 +790,18 @@ func (s *SignalingService) OnStartJoin(xl *xlog.Logger, senderID string, msgBody
 		res.Code = errors.WSErrorRoomTypeWrong
 		return err
 	}
-	// 查看该用户是否在房间中，并且状态为观看中。
+	// 查看该观众账号信息。
 	user, err := s.accountCtl.GetActiveUserByID(xl, senderID)
 	if err != nil {
 		res.Code = errors.WSErrorPlayerNoExist
 		return err
 	}
-	// 查看该观众账号信息。
 	account, err := s.accountCtl.GetAccountByID(xl, senderID)
 	if err != nil {
 		res.Code = errors.WSErrorPlayerNoExist
 		return err
 	}
+	// 查看该用户是否在房间中，并且状态为观看中。
 	if user.Room != room.ID {
 		res.Code = errors.WSErrorPlayerNotInRoom
 		return fmt.Errorf("user %s not in room %s, cannot join", senderID, room.ID)
@@ -819,9 +819,9 @@ func (s *SignalingService) OnStartJoin(xl *xlog.Logger, senderID string, msgBody
 	}
 	// 检查该位置是否已经有其他观众已经上麦/请求上麦。
 	filter := map[string]interface{}{
-		"room":          room.ID,
-		"joinPositioon": joinPosition,
-		"status":        map[string]interface{}{"$in": []string{"joined", "joinWait"}},
+		"room":         room.ID,
+		"joinPosition": joinPosition,
+		"status":       map[string]interface{}{"$in": []string{"joined", "joinWait"}},
 	}
 	positionUser, err := s.accountCtl.GetActiveUserByFields(xl, filter)
 	if err != nil {
@@ -947,6 +947,7 @@ func (s *SignalingService) OnAnswerJoin(xl *xlog.Logger, senderID string, msgBod
 			RoomID:    room.ID,
 			ReqUserID: req.ReqUserID,
 			Accept:    true,
+			Position:  *joinAudience.JoinPosition,
 		}
 		s.Notify(xl, req.ReqUserID, protocol.MTAnswerJoinNotify, answerNotice)
 		// 通知所有观众有人加入连麦。
@@ -963,6 +964,8 @@ func (s *SignalingService) OnAnswerJoin(xl *xlog.Logger, senderID string, msgBod
 				s.Notify(xl, audience.ID, protocol.MTAudienceJoinedNotify, joinNotice)
 			}
 		}
+		// 通知主播有观众加入连麦。
+		s.Notify(xl, senderID, protocol.MTAudienceJoinedNotify, joinNotice)
 	} else {
 		// 更新观众状态为观看中。
 		joinAudience.Status = protocol.UserStatusWatching
@@ -1100,6 +1103,7 @@ func (s *SignalingService) OnUserOffline(xl *xlog.Logger, userID string) error {
 			xl.Infof("cannot find user %s's room, user status %v, error %v", userID, user.Status, err)
 			return err
 		}
+		xl.Debugf("user %s will leave room %s", user.ID, room.ID)
 		err = s.processAudienceLeave(xl, user, room)
 		if err != nil {
 			return err
@@ -1175,6 +1179,7 @@ func (s *SignalingService) processAudienceLeave(xl *xlog.Logger, user *protocol.
 		// 如果为连麦观众，通知主播与其他观众连麦已结束。
 		if user.Status == protocol.UserStatusJoined && user.JoinPosition != nil {
 			joinPosition := *user.JoinPosition
+			xl.Debugf("user %s joined room %s at position %d, now leave", user.ID, room.ID, joinPosition)
 			endNotice := &protocol.EndJoinNotify{
 				RoomID:    user.Room,
 				ReqUserID: user.ID,

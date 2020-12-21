@@ -360,6 +360,7 @@ type JoinAnswerNotify struct {
 	RoomID    string `json:"roomID"`
 	ReqUserID string `json:"reqUserID"`
 	Accept    bool   `json:"accept"`
+	Position  int    `json:"position"`
 }
 
 func (p *JoinAnswerNotify) Marshal() ([]byte, error) {
