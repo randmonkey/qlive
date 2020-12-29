@@ -319,8 +319,8 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 		Name:       args.RoomName,
 		Type:       roomType,
 		Creator:    userID,
-		PublishURL: h.generatePublishURL(roomID),
-		PlayURL:    h.generatePlayURL(roomID),
+		PublishURL: h.generatePublishURL(userID),
+		PlayURL:    h.generatePlayURL(userID),
 		RTCRoom:    roomID,
 	}
 	switch roomType {
@@ -431,12 +431,12 @@ func (h *RoomHandler) generateWSURL(xl *xlog.Logger, host string) string {
 	return h.WSProtocol + "://" + host + portPart + h.WSPath
 }
 
-func (h *RoomHandler) generatePlayURL(roomID string) string {
-	return "rtmp://" + h.RTCConfig.PlayHost + "/" + h.RTCConfig.PublishHub + "/" + roomID
+func (h *RoomHandler) generatePlayURL(streamName string) string {
+	return "rtmp://" + h.RTCConfig.PlayHost + "/" + h.RTCConfig.PublishHub + "/" + streamName
 }
 
-func (h *RoomHandler) generatePublishURL(roomID string) string {
-	return "rtmp://" + h.RTCConfig.PublishHost + "/" + h.RTCConfig.PublishHub + "/" + roomID
+func (h *RoomHandler) generatePublishURL(streamName string) string {
+	return "rtmp://" + h.RTCConfig.PublishHost + "/" + h.RTCConfig.PublishHub + "/" + streamName
 }
 
 const (
