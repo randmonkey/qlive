@@ -186,6 +186,27 @@ func (c *RoomController) CloseRoom(xl *xlog.Logger, userID string, roomID string
 	if err != nil {
 		xl.Errorf("failed to update status of audiences in room %s, error %v", roomID, err)
 	}
+	// 若房间为PK状态，更新PK对方的房间状态和主播用户状态。
+	if room.Status == protocol.LiveRoomStatusPK {
+		xl.Debugf("user %s's room %s is in PK, update room of anchor %s", userID, room.ID, room.PKAnchor)
+		pkAnchorID := room.PKAnchor
+		pkRoom, err := c.GetRoomByFields(xl, bson.M{"creator": pkAnchorID})
+		if err != nil {
+			xl.Errorf("failed to get room of pk anchor %s, error %v", pkAnchorID, err)
+		} else {
+			pkRoom.Status = protocol.LiveRoomStatusSingle
+			pkRoom.PKAnchor = ""
+			_, err := c.UpdateRoom(xl, pkRoom.ID, pkRoom)
+			if err != nil {
+				xl.Errorf("failed to update room %s of pk anchor %s, error %v", pkRoom.ID, pkAnchorID, err)
+			}
+		}
+		err = c.activeUserColl.UpdateOne(context.Background(), bson.M{"_id": pkAnchorID},
+			bson.M{"$set": bson.M{
+				"status": protocol.UserStatusSingleLive,
+				"room":   pkRoom.ID,
+			}})
+	}
 	xl.Infof("user %s closed room %s", userID, roomID)
 	return nil
 }

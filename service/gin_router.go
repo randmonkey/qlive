@@ -113,6 +113,13 @@ func NewRouter(conf *config.Config) (*gin.Engine, error) {
 			return nil, err
 		}
 		imHandler.IMService = imHandler.IMService.WithSignalingService(signalingService)
+		roomHandler.Notify = func(xl *xlog.Logger, userID string, msgType string, msg handler.MarshallableMessage) error {
+			msgBuf, err := msg.Marshal()
+			if err != nil {
+				return err
+			}
+			return imHandler.IMService.SendTextMessage(xl, userID, msgType+"="+string(msgBuf))
+		}
 	}
 
 	uploadController, err := controller.NewQiniuUploadController(conf.Storage, nil)

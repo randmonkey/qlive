@@ -668,14 +668,12 @@ func (s *SignalingService) OnEndPK(xl *xlog.Logger, senderID string, msgBody []b
 	}
 	// 处理更新出错的情况。
 	if updateErr != nil {
-
 		res.Code = errors.WSErrorInvalidParameter
 		// TODO：目前仅包含最后一次出错的错误。
 		return updateErr
 	}
 	// 成功返回。
 	res.Code = errors.WSErrorOK
-	s.Notify(xl, senderID, protocol.MT_EndPKResponse, res)
 	return nil
 }
 
@@ -1119,28 +1117,6 @@ func (s *SignalingService) processAnchorLeave(xl *xlog.Logger, user *protocol.Ac
 	if xl == nil {
 		xl = s.xl
 	}
-	// 如果是PK状态，向其PK对方发送消息。
-	if user.Status == protocol.UserStatusPKLive {
-		xl.Debugf("user %s's room %s is in PK, notify PK anchor %s", user.ID, room.ID, room.PKAnchor)
-		pkAnchorID := room.PKAnchor
-		endMessage := &protocol.PKEndNotify{
-			PKRoomID: room.ID,
-		}
-		s.Notify(xl, pkAnchorID, protocol.MT_PKEndNotify, endMessage)
-		// 更新PK对方主播的用户状态和房间状态。
-		pkActiveUser, err := s.accountCtl.GetActiveUserByID(xl, pkAnchorID)
-		if err == nil {
-			pkRoom, err := s.roomCtl.GetRoomByFields(xl, map[string]interface{}{"creator": pkAnchorID})
-			if err == nil {
-				pkActiveUser.Status = protocol.UserStatusSingleLive
-				pkActiveUser.Room = pkRoom.ID
-				s.accountCtl.UpdateActiveUser(xl, pkAnchorID, pkActiveUser)
-				pkRoom.Status = protocol.LiveRoomStatusSingle
-				pkRoom.PKAnchor = ""
-				s.roomCtl.UpdateRoom(xl, pkRoom.ID, pkRoom)
-			}
-		}
-	}
 
 	audiences, err := s.roomCtl.GetAllAudiences(xl, room.ID)
 	if err != nil {
@@ -1156,6 +1132,15 @@ func (s *SignalingService) processAnchorLeave(xl *xlog.Logger, user *protocol.Ac
 			return err
 		}
 		xl.Infof("room %s created by %s has been closed", room.ID, user.ID)
+	}
+	// 如果是PK状态，向其PK对方发送消息。
+	if user.Status == protocol.UserStatusPKLive {
+		xl.Debugf("user %s's room %s is in PK, notify PK anchor %s", user.ID, room.ID, room.PKAnchor)
+		pkAnchorID := room.PKAnchor
+		endMessage := &protocol.PKEndNotify{
+			PKRoomID: room.ID,
+		}
+		s.Notify(xl, pkAnchorID, protocol.MT_PKEndNotify, endMessage)
 	}
 	// 通知观众房间已关闭。
 	closeNotice := &protocol.RoomCloseNotify{RoomID: room.ID}

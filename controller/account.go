@@ -181,12 +181,10 @@ func (c *AccountController) UpdateActiveUser(xl *xlog.Logger, userID string, new
 	if newActiveUser.Status != "" {
 		activeUserRecord.Status = newActiveUser.Status
 	}
-	if newActiveUser.Room != "" {
-		activeUserRecord.Room = newActiveUser.Room
-	}
-	if newActiveUser.JoinPosition != nil {
-		activeUserRecord.JoinPosition = newActiveUser.JoinPosition
-	}
+
+	activeUserRecord.Room = newActiveUser.Room
+	activeUserRecord.JoinPosition = newActiveUser.JoinPosition
+
 	err = c.activeUserColl.UpdateOne(context.Background(), bson.M{"_id": userID}, bson.M{"$set": activeUserRecord})
 	if err != nil {
 		xl.Errorf("failed to update active user status record, error %v", err)

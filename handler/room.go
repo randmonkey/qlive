@@ -33,10 +33,16 @@ import (
 	"github.com/qrtc/qlive/protocol"
 )
 
+// MarshallableMessage 可序列化的消息。
+type MarshallableMessage interface {
+	Marshal() ([]byte, error)
+}
+
 // RoomHandler 处理直播间的CRUD，以及进入、退出房间等操作。
 type RoomHandler struct {
 	Account   AccountInterface
 	Room      RoomInterface
+	Notify    func(xl *xlog.Logger, userID string, msgType string, msg MarshallableMessage) error
 	RTCConfig *config.QiniuRTCConfig
 	// WSProtocol websocket 协议，ws 或 wss
 	WSProtocol string
@@ -641,6 +647,18 @@ func (h *RoomHandler) CloseRoom(c *gin.Context) {
 		return
 	}
 
+	currentRoom, err := h.Room.GetRoomByID(xl, args.RoomID)
+	if err != nil {
+		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
+		c.JSON(http.StatusInternalServerError, httpErr)
+		return
+	}
+	audiences, err := h.Room.GetAllAudiences(xl, args.RoomID)
+	if err != nil {
+		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
+		c.JSON(http.StatusInternalServerError, httpErr)
+		return
+	}
 	err = h.Room.CloseRoom(xl, userID, args.RoomID)
 	if err != nil {
 		serverErr, ok := err.(*errors.ServerError)
@@ -662,6 +680,17 @@ func (h *RoomHandler) CloseRoom(c *gin.Context) {
 		}
 	}
 	xl.Infof("user %s closed room: ID %s", userID, args.RoomID)
+	// 发送消息。
+	if h.Notify != nil {
+		if currentRoom.Status == protocol.LiveRoomStatusPK {
+			pkAnchorID := currentRoom.PKAnchor
+			h.Notify(xl, pkAnchorID, protocol.MT_PKEndNotify, &protocol.PKEndNotify{PKRoomID: currentRoom.ID})
+		}
+		for _, audience := range audiences {
+			h.Notify(xl, audience.ID, protocol.MTRoomCloseNotify, &protocol.RoomCloseNotify{RoomID: currentRoom.ID})
+		}
+	}
+
 	c.JSON(http.StatusOK, "")
 	// return OK
 }
