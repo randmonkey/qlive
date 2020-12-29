@@ -1170,16 +1170,16 @@ func (s *SignalingService) processAudienceLeave(xl *xlog.Logger, user *protocol.
 	if xl == nil {
 		xl = s.xl
 	}
-	err := s.roomCtl.LeaveRoom(xl, user.ID, room.ID)
-	if err != nil {
-		xl.Errorf("failed to leave room, user %s, room %s", user.ID, room.ID)
-		return err
-	}
 	if room.Type == protocol.RoomTypeVoice {
 		// 如果为连麦观众，通知主播与其他观众连麦已结束。
 		if user.Status == protocol.UserStatusJoined && user.JoinPosition != nil {
 			joinPosition := *user.JoinPosition
 			xl.Debugf("user %s joined room %s at position %d, now leave", user.ID, room.ID, joinPosition)
+			err := s.roomCtl.LeaveRoom(xl, user.ID, room.ID)
+			if err != nil {
+				xl.Errorf("failed to leave room, user %s, room %s", user.ID, room.ID)
+				return err
+			}
 			endNotice := &protocol.EndJoinNotify{
 				RoomID:    user.Room,
 				ReqUserID: user.ID,
