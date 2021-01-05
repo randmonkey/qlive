@@ -33,10 +33,16 @@ import (
 	"github.com/qrtc/qlive/protocol"
 )
 
+// MarshallableMessage 可序列化的消息。
+type MarshallableMessage interface {
+	Marshal() ([]byte, error)
+}
+
 // RoomHandler 处理直播间的CRUD，以及进入、退出房间等操作。
 type RoomHandler struct {
 	Account   AccountInterface
 	Room      RoomInterface
+	Notify    func(xl *xlog.Logger, userID string, msgType string, msg MarshallableMessage) error
 	RTCConfig *config.QiniuRTCConfig
 	// WSProtocol websocket 协议，ws 或 wss
 	WSProtocol string
@@ -68,6 +74,8 @@ type RoomInterface interface {
 	UpdateRoom(xl *xlog.Logger, id string, room *protocol.LiveRoom) (*protocol.LiveRoom, error)
 	// GetAudienceNumber 获取房间内观众人数。
 	GetAudienceNumber(xl *xlog.Logger, roomID string) (int, error)
+	// GetAllAudiences 获取房间内全部观众信息。
+	GetAllAudiences(xl *xlog.Logger, roomID string) ([]*protocol.ActiveUser, error)
 }
 
 // @Tags qlive api
@@ -142,8 +150,38 @@ func (h *RoomHandler) makeGetRoomResponse(xl *xlog.Logger, room *protocol.LiveRo
 			}
 		}
 	}
-	// TODO:若为语音房，添加上麦观众信息。
+
 	return &getRoomResp, nil
+}
+
+func (h *RoomHandler) getJoinedAudiences(xl *xlog.Logger, room *protocol.LiveRoom) ([]protocol.JoinedAudience, error) {
+	ret := []protocol.JoinedAudience{}
+	if room.Type == protocol.RoomTypeVoice {
+		audiences, err := h.Room.GetAllAudiences(xl, room.ID)
+		if err != nil {
+			xl.Errorf("failed to get all audiences of room %s, error %v", room.ID, err)
+			return nil, err
+		}
+		for _, audience := range audiences {
+			if audience.Status == protocol.UserStatusJoined && audience.JoinPosition != nil {
+				audienceAccount, err := h.Account.GetAccountByID(xl, audience.ID)
+				if err != nil {
+					xl.Errorf("failed to get account info of user %s, error %v", audience.ID, err)
+					continue
+				}
+				joinPosition := *audience.JoinPosition
+				ret = append(ret,
+					protocol.JoinedAudience{
+						Position:  joinPosition,
+						ID:        audience.ID,
+						Nickname:  audienceAccount.Nickname,
+						Gender:    audienceAccount.Gender,
+						AvatarURL: audienceAccount.AvatarURL,
+					})
+			}
+		}
+	}
+	return ret, nil
 }
 
 // ListCanPKRooms 列出当前主播可以PK的房间列表。
@@ -287,8 +325,8 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 		Name:       args.RoomName,
 		Type:       roomType,
 		Creator:    userID,
-		PublishURL: h.generatePublishURL(roomID),
-		PlayURL:    h.generatePlayURL(roomID),
+		PublishURL: h.generatePublishURL(userID),
+		PlayURL:    h.generatePlayURL(userID),
 		RTCRoom:    roomID,
 	}
 	switch roomType {
@@ -296,6 +334,7 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 		room.Status = protocol.LiveRoomStatusSingle
 	case protocol.RoomTypeVoice:
 		room.Status = protocol.LiveRoomStatusVoiceLive
+		room.MaxJoinAudiences = protocol.DefaultMaxJoinAudiences
 	default:
 		room.Status = protocol.LiveRoomStatusSingle
 	}
@@ -398,12 +437,12 @@ func (h *RoomHandler) generateWSURL(xl *xlog.Logger, host string) string {
 	return h.WSProtocol + "://" + host + portPart + h.WSPath
 }
 
-func (h *RoomHandler) generatePlayURL(roomID string) string {
-	return "rtmp://" + h.RTCConfig.PlayHost + "/" + h.RTCConfig.PublishHub + "/" + roomID
+func (h *RoomHandler) generatePlayURL(streamName string) string {
+	return "rtmp://" + h.RTCConfig.PlayHost + "/" + h.RTCConfig.PublishHub + "/" + streamName
 }
 
-func (h *RoomHandler) generatePublishURL(roomID string) string {
-	return "rtmp://" + h.RTCConfig.PublishHost + "/" + h.RTCConfig.PublishHub + "/" + roomID
+func (h *RoomHandler) generatePublishURL(streamName string) string {
+	return "rtmp://" + h.RTCConfig.PublishHost + "/" + h.RTCConfig.PublishHub + "/" + streamName
 }
 
 const (
@@ -473,7 +512,15 @@ func (h *RoomHandler) GetRoom(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, httpErr)
 		return
 	}
-	xl.Debugf("user %s get room info of room %s", userID, roomID)
+	if room.Type == protocol.RoomTypeVoice {
+		joinedAudiences, err := h.getJoinedAudiences(xl, room)
+		if err != nil {
+			xl.Errorf("failed to get joined audiences of room %s,error %v", room.ID, err)
+		} else {
+			resp.JoinedAudiences = joinedAudiences
+		}
+	}
+	xl.Debugf("user %s get info of room %s", userID, roomID)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -600,6 +647,18 @@ func (h *RoomHandler) CloseRoom(c *gin.Context) {
 		return
 	}
 
+	currentRoom, err := h.Room.GetRoomByID(xl, args.RoomID)
+	if err != nil {
+		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
+		c.JSON(http.StatusInternalServerError, httpErr)
+		return
+	}
+	audiences, err := h.Room.GetAllAudiences(xl, args.RoomID)
+	if err != nil {
+		httpErr := errors.NewHTTPErrorInternal().WithRequestID(requestID)
+		c.JSON(http.StatusInternalServerError, httpErr)
+		return
+	}
 	err = h.Room.CloseRoom(xl, userID, args.RoomID)
 	if err != nil {
 		serverErr, ok := err.(*errors.ServerError)
@@ -621,6 +680,17 @@ func (h *RoomHandler) CloseRoom(c *gin.Context) {
 		}
 	}
 	xl.Infof("user %s closed room: ID %s", userID, args.RoomID)
+	// 发送消息。
+	if h.Notify != nil {
+		if currentRoom.Status == protocol.LiveRoomStatusPK {
+			pkAnchorID := currentRoom.PKAnchor
+			h.Notify(xl, pkAnchorID, protocol.MT_PKEndNotify, &protocol.PKEndNotify{PKRoomID: currentRoom.ID})
+		}
+		for _, audience := range audiences {
+			h.Notify(xl, audience.ID, protocol.MTRoomCloseNotify, &protocol.RoomCloseNotify{RoomID: currentRoom.ID})
+		}
+	}
+
 	c.JSON(http.StatusOK, "")
 	// return OK
 }
@@ -759,9 +829,10 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 		return
 	}
 	creatorInfo := protocol.UserInfo{
-		ID:       creator.ID,
-		Nickname: creator.Nickname,
-		Gender:   creator.Gender,
+		ID:        creator.ID,
+		Nickname:  creator.Nickname,
+		Gender:    creator.Gender,
+		AvatarURL: creator.AvatarURL,
 	}
 
 	ret = &protocol.EnterRoomResponse{
@@ -784,9 +855,10 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 			return
 		}
 		pkAnchorInfo = &protocol.UserInfo{
-			ID:       pkAnchor.ID,
-			Nickname: pkAnchor.Nickname,
-			Gender:   pkAnchor.Gender,
+			ID:        pkAnchor.ID,
+			Nickname:  pkAnchor.Nickname,
+			Gender:    pkAnchor.Gender,
+			AvatarURL: pkAnchor.AvatarURL,
 		}
 		ret.PKAnchor = pkAnchorInfo
 	}
@@ -794,6 +866,14 @@ func (h *RoomHandler) EnterRoom(c *gin.Context) {
 	if updatedRoom.Type == protocol.RoomTypeVoice {
 		rtcRoomToken := h.generateRTCRoomToken(updatedRoom.ID, userID, "user")
 		ret.RTCRoomToken = rtcRoomToken
+		joinedAudieces, err := h.getJoinedAudiences(xl, updatedRoom)
+		if err != nil {
+			xl.Errorf("failed to get joined audiences of room %s, error %v", args.RoomID, err)
+		} else {
+			ret.JoinedAudiences = joinedAudieces
+		}
+		// 生成websocket的连接地址。
+		ret.WSURL = h.generateWSURL(xl, c.Request.Host)
 	}
 
 	c.JSON(http.StatusOK, ret)

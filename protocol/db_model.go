@@ -87,10 +87,12 @@ type ActiveUser struct {
 	Nickname string `json:"nickname" bson:"nickname"`
 	// Token 本次登录使用的token。
 	Token string `json:"token" bson:"token"`
-	// Status 用户状态。包括：空闲，观看中，单人直播中，PK连麦直播中（等待PK被响应、等待响应他人PK）
+	// Status 用户状态。包括：空闲，观看中，单人直播中，PK连麦直播中（等待PK被响应、等待响应他人PK），（语音房）已上麦、等待上麦
 	Status UserStatus `json:"status" bson:"status"`
 	// Room 所在直播间。PK连麦直播中，发起PK一方主播的所在直播间为其PK对手主播的直播间。
 	Room string `json:"room,omitempty" bson:"room,omitempty"`
+	// JoinPosition （语音房）如果观众已经上麦/请求上麦，观众所在的位置（从0开始）。
+	JoinPosition *int `json:"joinPosition,omitempty" bson:"joinPosition,omitempty"`
 }
 
 // SMSCodeRecord 已发送的验证码记录。
@@ -123,6 +125,11 @@ const (
 	LiveRoomStatusWaitPK LiveRoomStatus = "waitPK"
 	// LiveRoomStatusVoiceLive 语音聊天房直播中
 	LiveRoomStatusVoiceLive LiveRoomStatus = "voiceLive"
+)
+
+const (
+	// DefaultMaxJoinAudiences (语音房) 最大观众上麦人数。
+	DefaultMaxJoinAudiences = 8
 )
 
 // LiveRoom 直播间信息。

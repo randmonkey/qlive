@@ -96,6 +96,7 @@ func (c *RoomController) CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) (*
 			return nil, &errors.ServerError{Code: errors.ServerErrorRoomNameUsed}
 		}
 		// 如果是该用户创建的直播间，返回直播间的现有信息。
+		xl.Infof("user %s already created room %s, return existing room", existingRoom.Creator, existingRoom.ID)
 		return &existingRoom, nil
 	}
 
@@ -142,6 +143,7 @@ func (c *RoomController) CreateRoom(xl *xlog.Logger, room *protocol.LiveRoom) (*
 	if err != nil {
 		xl.Errorf("failed to update user status of room creator %s", creatorID)
 	}
+	xl.Infof("user %s created room %s", creatorID, room.ID)
 	return room, nil
 }
 
@@ -173,10 +175,39 @@ func (c *RoomController) CloseRoom(xl *xlog.Logger, userID string, roomID string
 		xl.Errorf("failed to update status of room %s's creator %s, error %v", roomID, userID, err)
 	}
 	// 修改所有观众状态为空闲，所在房间为空。
-	_, err = c.activeUserColl.UpdateAll(context.Background(), bson.M{"room": roomID, "status": protocol.UserStatusWatching}, bson.M{"$set": bson.M{"room": "", "status": protocol.UserStatusIdle}})
+	_, err = c.activeUserColl.UpdateAll(context.Background(),
+		bson.M{"room": roomID, "status": bson.M{"$in": []protocol.UserStatus{
+			protocol.UserStatusWatching,
+			protocol.UserStatusJoinWait,
+			protocol.UserStatusJoined,
+		}}},
+		bson.M{"$set": bson.M{"room": "", "status": protocol.UserStatusIdle, "joinPosition": nil}},
+	)
 	if err != nil {
 		xl.Errorf("failed to update status of audiences in room %s, error %v", roomID, err)
 	}
+	// 若房间为PK状态，更新PK对方的房间状态和主播用户状态。
+	if room.Status == protocol.LiveRoomStatusPK {
+		xl.Debugf("user %s's room %s is in PK, update room of anchor %s", userID, room.ID, room.PKAnchor)
+		pkAnchorID := room.PKAnchor
+		pkRoom, err := c.GetRoomByFields(xl, bson.M{"creator": pkAnchorID})
+		if err != nil {
+			xl.Errorf("failed to get room of pk anchor %s, error %v", pkAnchorID, err)
+		} else {
+			pkRoom.Status = protocol.LiveRoomStatusSingle
+			pkRoom.PKAnchor = ""
+			_, err := c.UpdateRoom(xl, pkRoom.ID, pkRoom)
+			if err != nil {
+				xl.Errorf("failed to update room %s of pk anchor %s, error %v", pkRoom.ID, pkAnchorID, err)
+			}
+		}
+		err = c.activeUserColl.UpdateOne(context.Background(), bson.M{"_id": pkAnchorID},
+			bson.M{"$set": bson.M{
+				"status": protocol.UserStatusSingleLive,
+				"room":   pkRoom.ID,
+			}})
+	}
+	xl.Infof("user %s closed room %s", userID, roomID)
 	return nil
 }
 
@@ -310,6 +341,7 @@ func (c *RoomController) EnterRoom(xl *xlog.Logger, userID string, roomID string
 		xl.Errorf("failed to update user status of user %s, error %v", userID, err)
 		return nil, err
 	}
+	xl.Infof("user %s entered room %s", userID, roomID)
 	return room, nil
 }
 
@@ -358,23 +390,56 @@ func (c *RoomController) LeaveRoom(xl *xlog.Logger, userID string, roomID string
 	}
 	activeUser.Status = protocol.UserStatusIdle
 	activeUser.Room = ""
+	activeUser.JoinPosition = nil
 	err = c.activeUserColl.UpdateOne(context.Background(), bson.M{"_id": userID}, bson.M{"$set": &activeUser})
 	if err != nil {
 		xl.Errorf("failed to update user status of user %s, error %v", userID, err)
 	}
+	xl.Infof("user %s left room %s", userID, roomID)
 	return nil
 }
 
 // GetAudienceNumber 获取房间内的观众人数。
 func (c *RoomController) GetAudienceNumber(xl *xlog.Logger, roomID string) (int, error) {
+	if xl == nil {
+		xl = c.xl
+	}
 	room, err := c.GetRoomByID(xl, roomID)
 	if err != nil {
 		return 0, err
 	}
-	audienceCount, err := c.activeUserColl.Find(context.Background(), bson.M{"room": room.ID, "status": protocol.UserStatusWatching}).Count()
+	audienceCount, err := c.activeUserColl.Find(context.Background(), bson.M{
+		"room": room.ID,
+		"status": bson.M{"$in": []protocol.UserStatus{
+			protocol.UserStatusWatching, protocol.UserStatusJoined, protocol.UserStatusJoinWait},
+		},
+	}).Count()
 	if err != nil {
 		xl.Errorf("failed to get count of users watching room %s, error %v", room.ID, err)
 		return 0, err
 	}
 	return int(audienceCount), nil
+}
+
+// GetAllAudiences 获取房间中所有观众（包括连麦中和请求上麦的观众）。
+func (c *RoomController) GetAllAudiences(xl *xlog.Logger, roomID string) ([]*protocol.ActiveUser, error) {
+	if xl == nil {
+		xl = c.xl
+	}
+	room, err := c.GetRoomByID(xl, roomID)
+	if err != nil {
+		return nil, err
+	}
+	ret := []*protocol.ActiveUser{}
+	err = c.activeUserColl.Find(context.Background(), bson.M{
+		"room": room.ID,
+		"status": bson.M{"$in": []protocol.UserStatus{
+			protocol.UserStatusWatching, protocol.UserStatusJoined, protocol.UserStatusJoinWait},
+		},
+	}).All(&ret)
+	if err != nil {
+		xl.Errorf("failed to get all audiences in room %s, error %v", roomID, err)
+		return nil, err
+	}
+	return ret, nil
 }

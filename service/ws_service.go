@@ -167,6 +167,12 @@ func (c *WSClient) parallelProcess(ctx context.Context, t string, m msgpump.Mess
 		c.onAnswerPK(ctx, m)
 	case protocol.MT_EndPKRequest:
 		c.onEndPK(ctx, m)
+	case protocol.MTStartJoinRequest:
+		c.onStartJoin(ctx, m)
+	case protocol.MTAnswerJoinRequest:
+		c.onAnswerJoin(ctx, m)
+	case protocol.MTEndJoinRequest:
+		c.onEndJoin(ctx, m)
 	case protocol.MT_DisconnectNotify:
 		c.onDisconnect(ctx, m)
 	default:
@@ -238,6 +244,18 @@ func (c *WSClient) onAnswerPK(ctx context.Context, m msgpump.Message) {
 
 func (c *WSClient) onEndPK(ctx context.Context, m msgpump.Message) {
 	c.s.signaling.OnEndPK(c.xl, c.playerID, m)
+}
+
+func (c *WSClient) onStartJoin(ctx context.Context, m msgpump.Message) {
+	c.s.signaling.OnStartJoin(c.xl, c.playerID, m)
+}
+
+func (c *WSClient) onAnswerJoin(ctx context.Context, m msgpump.Message) {
+	c.s.signaling.OnAnswerJoin(c.xl, c.playerID, m)
+}
+
+func (c *WSClient) onEndJoin(ctx context.Context, m msgpump.Message) {
+	c.s.signaling.OnEndJoin(c.xl, c.playerID, m)
 }
 
 func (c *WSClient) onDisconnect(ctx context.Context, m msgpump.Message) {

@@ -57,7 +57,8 @@ type RongCloudIMController struct {
 
 // 融云的IM消息类型。
 const (
-	RongCloudMessageTypeText = "RC:TxtMsg"
+	RongCloudMessageTypeText    = "RC:TxtMsg"
+	RongCloudMessageTypeWelcome = "RC:Chatroom:Welcome"
 )
 
 // IMInterface IM用户与消息管理相关接口。
@@ -168,7 +169,15 @@ func (c *RongCloudIMController) processMessage(xl *xlog.Logger, msg *protocol.Ro
 		if c.isSignalingMessage(textContent) && c.signalingService != nil {
 			xl.Debugf("signaling message %s", textContent)
 			c.signalingService.OnMessage(xl, msg.FromUserID, []byte(textContent))
+			if strings.HasPrefix(textContent, "disconnect=") {
+				xl.Debugf("user %s sent disconnect, remove from user map...", msg.FromUserID)
+				c.removeIMUser(msg.FromUserID)
+			}
 		}
+	}
+	if msg.ObjectName == RongCloudMessageTypeWelcome {
+		msgTime := time.Unix(msg.MsgTimestampMS/1000, (msg.MsgTimestampMS%1000)*1000*1000)
+		c.setUserOnlineTime(xl, msg.FromUserID, msgTime)
 	}
 	return nil
 }
@@ -261,6 +270,16 @@ func (c *RongCloudIMController) setIMUser(user *protocol.IMUser) {
 	c.userLock.Lock()
 	defer c.userLock.Unlock()
 	c.userMap[user.UserID] = user
+}
+
+func (c *RongCloudIMController) removeIMUser(userID string) {
+	if userID == "" {
+		return
+	}
+
+	c.userLock.Lock()
+	defer c.userLock.Unlock()
+	delete(c.userMap, userID)
 }
 
 func (c *RongCloudIMController) setUserOnlineTime(xl *xlog.Logger, userID string, t time.Time) {
