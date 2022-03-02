@@ -179,6 +179,10 @@ type AnswerPKResponse struct {
 	RPCID     string `json:"rpcID,omitempty"`
 	Code      int    `json:"code"`
 	Error     string `json:"error"`
+	// PK 开始时跨房进入的 RTC 房间名称，仅接受 PK 时有此字段。
+	RelayRtcRoom string `json:"relayRtcRoom,omitempty"`
+	// PK 开始时跨房进入另一房间使用的 room token，仅接受 PK 时有此字段。
+	RelayRtcRoomToken string `json:"relayRtcRoomToken,omitempty"`
 }
 
 func (p *AnswerPKResponse) Marshal() ([]byte, error) {
@@ -219,6 +223,10 @@ type PKAnswerNotify struct {
 	RTCRoom string `json:"rtcRoom,omitempty"`
 	// PK被接受时才有该字段，表示加入被PK直播间对应的RTC房间使用的token
 	RTCRoomToken string `json:"rtcRoomToken,omitempty"`
+	// PK 开始时跨房进入的 RTC 房间名称，仅接受 PK 时有此字段。
+	RelayRtcRoom string `json:"relayRtcRoom,omitempty"`
+	// PK 开始时跨房进入另一房间使用的 room token，仅接受 PK 时有此字段。
+	RelayRtcRoomToken string `json:"relayRtcRoomToken,omitempty"`
 }
 
 func (p *PKAnswerNotify) Marshal() ([]byte, error) {

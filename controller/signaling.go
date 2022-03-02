@@ -16,6 +16,8 @@ package controller
 
 import (
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"sync"
 	"time"
 
@@ -417,6 +419,23 @@ func (s *SignalingService) generateRTCRoomToken(roomID string, userID string, pe
 	return token
 }
 
+func (s *SignalingService) generateRelayRTCRoomToken(destRoomID string, destPlayerID string) string {
+	// TODO: 换成可配置？
+	demoApiHost := "https://api-demo.qnsdk.com"
+	path := fmt.Sprintf("/v1/rtc/token/relay/app/%s/room/%s/user/%s",
+		s.rtcConfig.AppID, destRoomID, destPlayerID)
+	cl := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+	resp, err := cl.Get(demoApiHost + path)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	buf, _ := ioutil.ReadAll(resp.Body)
+	return string(buf)
+}
+
 // OnAnswerPK 处理应答PK消息。
 func (s *SignalingService) OnAnswerPK(xl *xlog.Logger, senderID string, msgBody []byte) error {
 	if xl == nil {
@@ -515,6 +534,10 @@ func (s *SignalingService) OnAnswerPK(xl *xlog.Logger, senderID string, msgBody 
 	if req.Accept {
 		answerMessage.RTCRoom = selfRoom.ID
 		answerMessage.RTCRoomToken = s.generateRTCRoomToken(selfRoom.ID, pkPlayer.ID, "user")
+		// 发起者需要跨房到应答者的房间。
+		answerMessage.RelayRtcRoom = selfRoom.ID
+		// 发起者需要使用自己的用户 ID。
+		answerMessage.RelayRtcRoomToken = s.generateRelayRTCRoomToken(selfRoom.ID, pkPlayer.ID)
 	}
 	err = s.Notify(xl, pkPlayer.ID, protocol.MT_PKAnswerNotify, answerMessage)
 	if err != nil {
@@ -563,6 +586,11 @@ func (s *SignalingService) OnAnswerPK(xl *xlog.Logger, senderID string, msgBody 
 	// 成功返回。
 	res.ReqRoomID = req.ReqRoomID
 	res.Code = errors.WSErrorOK
+	// 如果接受 PK，PK 应答者需要跨房到发起者的房间。应答者跨房时，使用自己的user ID。
+	if req.Accept {
+		res.RelayRtcRoom = pkRoom.ID
+		res.RelayRtcRoomToken = s.generateRelayRTCRoomToken(pkRoom.ID, selfPlayer.ID)
+	}
 	return nil
 }
 
